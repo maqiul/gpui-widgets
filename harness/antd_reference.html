@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>antdv-next Button 参照面板</title>
+<script type="importmap">
+{
+  "imports": {
+    "vue": "./vendor/vue.esm-browser.js",
+    "antdv-next": "./vendor/antd.esm.js"
+  }
+}
+</script>
+<style>
+  html, body { margin: 0; background: #fff; }
+  #root { padding: 16px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .label { width: 140px; color: rgba(0,0,0,.65); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import { createApp, h } from 'vue';
+import { ConfigProvider, Button, theme as antTheme } from 'antdv-next';
+
+const VARIANTS = ['solid', 'outlined', 'dashed', 'filled', 'text', 'link'];
+const COLORS = ['default', 'primary', 'danger'];
+const SIZES = ['small', 'middle', 'large'];
+// 交互态由 Playwright 真实触发（hover / mouse.down / Tab），不伪造伪类
+const STATES = [
+  ['normal', {}],
+  ['hover', {}],
+  ['active', {}],
+  ['focus', {}],
+  ['disabled', { disabled: true }],
+  ['loading', { loading: true }],
+];
+
+const App = {
+  props: { algorithm: { default: 'light' }, accent: { default: null } },
+  setup(props) {
+    return () =>
+      h(
+        ConfigProvider,
+        {
+          theme: {
+            algorithm: props.algorithm === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+            token: props.accent ? { colorPrimary: props.accent } : {},
+          },
+        },
+        () =>
+          h('div', { class: 'panel' }, [
+            ...VARIANTS.flatMap((variant) =>
+              COLORS.flatMap((color) =>
+                STATES.map(([state, extra]) =>
+                  h('div', { class: 'row', 'data-group': `${variant}-${color}` }, [
+                    h('span', { class: 'label' }, `${variant}/${color}/${state}`),
+                    ...SIZES.map((size) =>
+                      h(
+                        Button,
+                        // data-cell 供采集脚本定位：变体-颜色-态-尺寸
+                        { variant, color, size, 'data-cell': `${variant}|${color}|${state}|${size}`, ...extra },
+                        () => (size === 'small' ? 'S' : size === 'large' ? 'L' : 'M'),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+            h('div', { class: 'row', 'data-group': 'shape' }, [
+              h('span', { class: 'label' }, 'shape'),
+              h(Button, { type: 'primary', shape: 'round', 'data-cell': 'shape|round' }, () => '胶囊按钮'),
+              h(Button, { shape: 'circle', 'data-cell': 'shape|circle' }, () => '＋'),
+              h(Button, { type: 'primary', shape: 'circle', size: 'small', 'data-cell': 'shape|circle-sm' }, () => '✓'),
+            ]),
+            h('div', { class: 'row', 'data-group': 'block' }, [
+              h('span', { class: 'label' }, 'block'),
+              h(Button, { block: true, 'data-cell': 'block|default' }, () => '块级按钮（占满整行）'),
+            ]),
+            h('div', { class: 'row', 'data-group': 'icon' }, [
+              h('span', { class: 'label' }, 'icon'),
+              h(Button, { 'data-cell': 'icon|start' }, () => [h('span', null, '⬇'), h('span', null, '下载')]),
+            ]),
+          ]),
+      );
+  },
+};
+
+let app = null;
+const remount = (component, props) => {
+  // 必须先卸载上一个应用：直接清空 innerHTML 会让 Vue 的 patch 找不到锚点
+  if (app) {
+    app.unmount();
+    app = null;
+    document.getElementById('root').innerHTML = '';
+  }
+  app = createApp(component, props);
+  app.mount(document.getElementById('root'));
+  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 60))));
+};
+
+window.__mount = (algorithm, accent) => remount(App, { algorithm, accent });
+
+// ---- 截图面板：与 Rust 侧 examples/panel_shot.rs 同构 ----
+// 一个变体一张图，12 行 = 3 色彩 × (small / middle / large / disabled)。
+// 几何常量必须和 harness/shot_diff.py 一致：pad 16 / 行带 56（控件 40 + 间隙 16）/ label 140 / 行内 gap 8。
+const PANEL = { pad: 16, rowH: 40, rowGap: 16, label: 140, gap: 8, width: 420 };
+const PANEL_ROWS = [];
+for (const color of ['default', 'primary', 'danger']) {
+  for (const [size, text, extra] of [
+    ['small', 'S', {}],
+    ['middle', 'M', {}],
+    ['large', 'L', {}],
+    ['middle', 'off', { disabled: true }],
+  ]) {
+    PANEL_ROWS.push([`${color}-${text}`, color, size, text, extra]);
+  }
+}
+
+const PanelApp = {
+  props: { variant: { required: true }, algorithm: { default: 'light' }, accent: { default: null } },
+  setup(props) {
+    return () =>
+      h(
+        ConfigProvider,
+        {
+          theme: {
+            algorithm: props.algorithm === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+            token: props.accent ? { colorPrimary: props.accent } : {},
+          },
+        },
+        () =>
+          h(
+            'div',
+            {
+              id: 'panel',
+              style: {
+                width: `${PANEL.width}px`,
+                boxSizing: 'border-box',
+                padding: `${PANEL.pad}px`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: `${PANEL.rowGap}px`,
+              },
+            },
+            PANEL_ROWS.map(([label, color, size, text, extra]) =>
+              h(
+                'div',
+                {
+                  style: {
+                    height: `${PANEL.rowH}px`,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: `${PANEL.gap}px`,
+                  },
+                },
+                [
+                  h(
+                    'span',
+                    { class: 'panel-label', style: { width: `${PANEL.label}px`, flex: 'none', fontSize: '12px' } },
+                    label,
+                  ),
+                  h(Button, { variant: props.variant, color, size, ...extra }, () => text),
+                ],
+              ),
+            ),
+          ),
+      );
+  },
+};
+
+/// 面板底色与标签色取当前主题的别名令牌，避免把 #fff / #141414 写死在参照页里
+const applyPanelTokens = () => {
+  const btn = document.querySelector('#panel .ant-btn');
+  const cs = getComputedStyle(btn || document.body);
+  const read = (name) => cs.getPropertyValue(`--ant-${name}`).trim();
+  const panel = document.getElementById('panel');
+  panel.style.background = read('color-bg-container');
+  document.querySelectorAll('#panel .panel-label').forEach((el) => {
+    el.style.color = read('color-text-tertiary');
+  });
+  document.body.style.background = panel.style.background;
+  return new Promise((r) => requestAnimationFrame(() => setTimeout(r, 60)));
+};
+
+window.__panel = (variant, algorithm, accent) =>
+  remount(PanelApp, { variant, algorithm, accent }).then(applyPanelTokens);
+window.__ready = window.__mount('light', null);
+</script>
+</body>
+</html>

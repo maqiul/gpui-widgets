@@ -1,0 +1,384 @@
+[package]
+name = "gpui-widgets"
+version = "0.2.6"
+edition = "2024"
+description = "General-purpose widgets built on GPUI (Zed's GPU-accelerated UI framework)"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["gpui", "gui", "widgets", "ui", "desktop"]
+categories = ["gui"]
+rust-version = "1.89"
+# 发布白名单：只带源码/测试/示例/文档/测试基准文本。
+# .ref（82M 参照源）、harness 截图与脚本、.agents、构建日志一律不进包。
+# 注意：antd_baseline 下有指向仓库外的 node_modules JUNCTION，只收 *.txt；
+# 实际打包走 packaging/package-crate.sh 的干净 staging 目录（cargo 会强收
+# 任意位置的 LICENSE/README 文件，直接在本目录打包会泄漏 .ref 里的第三方文件）。
+# Cargo.lock 随包仅为 cargo install --locked 用户提供可复现组合；
+# 注意 docs.rs 会忽略包内 lock、用最新版本重新解析依赖，故 docs.rs 的修复
+# 不靠 lock，而靠下方 [target.'cfg(unix)'.dependencies] 的 libc 精确钉版。
+include = [
+    "src/**",
+    "tests/**",
+    "examples/**",
+    "docs/**",
+    "harness/antd_baseline/*.txt",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "Cargo.lock",
+]
+
+[lib]
+name = "gpui_widgets"
+path = "src/lib.rs"
+
+[dependencies]
+# GPUI 取自 gpui-pre（Zed GPUI 快照的第三方 crates.io 重发），固定 0.3.14。
+# 与官方 gpui 0.2.2 不能混用；下游宿主需同样切换到 gpui-pre。
+gpui = { package = "gpui-pre", version = "=0.3.14" }
+unicode-segmentation = "1.12"
+# 视频帧缓冲（RgbaImage/Frame），与 gpui 内部使用同一版本
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# 解码线程 -> UI 线程的异步帧通道
+flume = "0.11"
+
+[dev-dependencies]
+# 示例的宿主入口：gpui-pre 已把平台层拆到 gpui_platform。
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.14", features = ["font-kit", "wayland", "x11"] }
+
+[target.'cfg(unix)'.dependencies]
+# 传递依赖钉版（docs.rs 修复的关键）：gpui→gpui_http_client→zed-async-tar→xattr 0.2.3
+# 引用 libc::ENOATTR，而 libc 0.2.191 物理移除该 linux 别名 ⇒ E0425 编译失败。
+# docs.rs 忽略包内 Cargo.lock、按最新版本全新解析，会选到坏 libc；在此以精确版本
+# 直接依赖 libc，cargo 会把全图 semver 兼容的 libc 统一到 0.2.189（仍含 ENOATTR 别名），
+# 与 lock 无关。仅 unix 生效（xattr 只在 unix 编译），Windows 已验证构建零影响。
+# 上游 xattr/zed-async-tar 改用 ENODATA 后可移除此钉版。
+libc = "=0.2.189"
+
+[target.'cfg(windows)'.dependencies]
+# VideoPlayer 使用 Windows Media Foundation 解码视频
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }
+
+[profile.dev]
+# GPUI 依赖较多，稍微提高优化等级以改善调试时的渲染流畅度
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+# docs.rs 默认 -Zrustdoc-scrape-examples 会抓取示例调用点并渲染源码高亮，
+# 触发 rustdoc nightly ICE（highlight.rs exit_elem called on empty class stack）。
+# 逐示例关闭抓取以绕过；本地构建与 harness 不受影响，API 文档仍完整。
+
+[[example]]
+name = "accordion_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "alert_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "anchor_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "autocomplete_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "avatar_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "badge_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "breadcrumb_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "calendar_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "card_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "carousel_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "cascader2_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "cascader_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "checkbox_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "color_picker_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "countdown_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "date_picker_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "descriptions_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "divider_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "drawer_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "empty_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "floatbutton_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "form_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "gallery"
+doc-scrape-examples = false
+
+[[example]]
+name = "gen_assets"
+doc-scrape-examples = false
+
+[[example]]
+name = "grid_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "hotkey_input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "integration"
+doc-scrape-examples = false
+
+[[example]]
+name = "kbd_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "layout_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "link_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "mentions_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "menu_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "message_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "minimal"
+doc-scrape-examples = false
+
+[[example]]
+name = "modal_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "multi_select_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "navmenu_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "notification_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "number_input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "pagination_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "password_input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "popconfirm_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "popover_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "progress_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "radio_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "range_picker_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "rating_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "result_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "scrollbar_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "search_input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "segmented_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "select_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "skeleton_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "slider_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "space_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "spin_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "splitter_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "statistic_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "steps_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "switch_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "table_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tabs_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tag_input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tag_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "textarea_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "time_picker_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "timeline_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tooltip_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tour_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "transfer_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tree_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "treeselect2_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "treeselect_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "typography_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "upload_panel_shot"
+doc-scrape-examples = false

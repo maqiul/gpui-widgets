@@ -1,0 +1,75 @@
+solid|default|normal|rgb(255, 255, 255)|rgb(0, 0, 0)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+solid|default|hover|rgb(255, 255, 255)|rgba(0,0,0,0.75)|transparent|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+solid|default|active|rgb(255, 255, 255)|rgba(0,0,0,0.95)|transparent|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+solid|default|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+solid|primary|normal|rgb(255, 255, 255)|rgb(139, 92, 246)|rgba(0, 0, 0, 0)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+solid|primary|hover|rgb(255, 255, 255)|rgb(175, 135, 255)|transparent|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+solid|primary|active|rgb(255, 255, 255)|rgb(104, 66, 207)|transparent|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+solid|primary|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+solid|danger|normal|rgb(255, 255, 255)|rgb(255, 77, 79)|rgba(0, 0, 0, 0)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+solid|danger|hover|rgb(255, 255, 255)|rgb(255, 120, 117)|transparent|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+solid|danger|active|rgb(255, 255, 255)|rgb(217, 54, 62)|transparent|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+solid|danger|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+outlined|default|normal|rgba(0, 0, 0, 0.88)|rgb(255, 255, 255)|rgb(217, 217, 217)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+outlined|default|hover|rgb(175, 135, 255)|rgb(255, 255, 255)|rgb(175, 135, 255)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+outlined|default|active|rgb(104, 66, 207)|rgb(255, 255, 255)|rgb(104, 66, 207)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+outlined|default|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+outlined|primary|normal|rgb(139, 92, 246)|rgb(255, 255, 255)|rgb(139, 92, 246)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+outlined|primary|hover|rgb(175, 135, 255)|rgb(255, 255, 255)|rgb(175, 135, 255)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+outlined|primary|active|rgb(104, 66, 207)|rgb(255, 255, 255)|rgb(104, 66, 207)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+outlined|primary|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+outlined|danger|normal|rgb(255, 77, 79)|rgb(255, 255, 255)|rgb(255, 77, 79)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+outlined|danger|hover|rgb(255, 120, 117)|rgb(255, 255, 255)|rgb(255, 120, 117)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+outlined|danger|active|rgb(217, 54, 62)|rgb(255, 255, 255)|rgb(217, 54, 62)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+outlined|danger|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+dashed|default|normal|rgba(0, 0, 0, 0.88)|rgb(255, 255, 255)|rgb(217, 217, 217)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+dashed|default|hover|rgb(175, 135, 255)|rgb(255, 255, 255)|rgb(175, 135, 255)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+dashed|default|active|rgb(104, 66, 207)|rgb(255, 255, 255)|rgb(104, 66, 207)|rgba(0, 0, 0, 0.02) 0px 2px 0px 0px|1
+dashed|default|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+dashed|primary|normal|rgb(139, 92, 246)|rgb(255, 255, 255)|rgb(139, 92, 246)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+dashed|primary|hover|rgb(175, 135, 255)|rgb(255, 255, 255)|rgb(175, 135, 255)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+dashed|primary|active|rgb(104, 66, 207)|rgb(255, 255, 255)|rgb(104, 66, 207)|rgba(122, 5, 255, 0.06) 0px 2px 0px 0px|1
+dashed|primary|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+dashed|danger|normal|rgb(255, 77, 79)|rgb(255, 255, 255)|rgb(255, 77, 79)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+dashed|danger|hover|rgb(255, 120, 117)|rgb(255, 255, 255)|rgb(255, 120, 117)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+dashed|danger|active|rgb(217, 54, 62)|rgb(255, 255, 255)|rgb(217, 54, 62)|rgba(255, 38, 5, 0.06) 0px 2px 0px 0px|1
+dashed|danger|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+filled|default|normal|rgba(0, 0, 0, 0.88)|rgba(0, 0, 0, 0.04)|rgba(0, 0, 0, 0)|none|1
+filled|default|hover|rgba(0,0,0,0.88)|rgba(0,0,0,0.06)|transparent|none|1
+filled|default|active|rgba(0,0,0,0.88)|rgba(0,0,0,0.15)|transparent|none|1
+filled|default|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+filled|primary|normal|rgb(139, 92, 246)|rgb(247, 240, 255)|rgba(0, 0, 0, 0)|none|1
+filled|primary|hover|rgb(139, 92, 246)|rgb(246, 240, 255)|transparent|none|1
+filled|primary|active|rgb(139, 92, 246)|rgb(232, 217, 255)|transparent|none|1
+filled|primary|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+filled|danger|normal|rgb(255, 77, 79)|rgb(255, 242, 240)|rgba(0, 0, 0, 0)|none|1
+filled|danger|hover|rgb(255, 77, 79)|rgb(255, 223, 220)|transparent|none|1
+filled|danger|active|rgb(255, 77, 79)|rgb(255, 204, 199)|transparent|none|1
+filled|danger|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0.04)|rgb(217, 217, 217)|none|1
+text|default|normal|rgba(0, 0, 0, 0.88)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+text|default|hover|rgba(0,0,0,0.88)|rgba(0,0,0,0.04)|transparent|none|1
+text|default|active|rgba(0,0,0,0.88)|rgba(0,0,0,0.15)|transparent|none|1
+text|default|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+text|primary|normal|rgb(139, 92, 246)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+text|primary|hover|rgb(175, 135, 255)|rgb(247, 240, 255)|transparent|none|1
+text|primary|active|rgb(104, 66, 207)|rgb(232, 217, 255)|transparent|none|1
+text|primary|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+text|danger|normal|rgb(255, 77, 79)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+text|danger|hover|rgb(255, 120, 117)|rgb(255, 242, 240)|transparent|none|1
+text|danger|active|rgb(217, 54, 62)|rgb(255, 204, 199)|transparent|none|1
+text|danger|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+link|default|normal|rgba(0, 0, 0, 0.88)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+link|default|hover|rgb(175, 135, 255)|transparent|transparent|none|1
+link|default|active|rgb(104, 66, 207)|transparent|transparent|none|1
+link|default|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+link|primary|normal|rgb(139, 92, 246)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+link|primary|hover|rgb(175, 135, 255)|transparent|transparent|none|1
+link|primary|active|rgb(104, 66, 207)|transparent|transparent|none|1
+link|primary|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+link|danger|normal|rgb(255, 77, 79)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+link|danger|hover|rgb(255, 120, 117)|transparent|transparent|none|1
+link|danger|active|rgb(217, 54, 62)|transparent|transparent|none|1
+link|danger|disabled|rgba(0, 0, 0, 0.25)|rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)|none|1
+GEO|small|24px|7px|14px|4px|1px|normal|8px|400
+GEO|middle|32px|15px|14px|6px|1px|normal|8px|400
+GEO|large|40px|15px|16px|8px|1px|normal|8px|400

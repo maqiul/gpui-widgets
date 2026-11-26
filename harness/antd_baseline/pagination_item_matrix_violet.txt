@@ -1,0 +1,8 @@
+0|0|0|#ffffff|rgba(0,0,0,0.88)|transparent|rgba(0,0,0,0.06)|rgba(0,0,0,0.88)|transparent|32|8|6|14|400|1|6
+0|0|1|#ffffff|rgba(0,0,0,0.25)|transparent|#ffffff|rgba(0,0,0,0.25)|transparent|32|8|6|14|400|1|6
+0|1|0|#ffffff|#8b5cf6|#8b5cf6|#ffffff|#af87ff|#af87ff|32|8|6|14|600|1|6
+0|1|1|#ffffff|rgba(0,0,0,0.25)|transparent|#ffffff|rgba(0,0,0,0.25)|transparent|32|8|6|14|600|1|6
+1|0|0|#ffffff|rgba(0,0,0,0.88)|transparent|rgba(0,0,0,0.06)|rgba(0,0,0,0.88)|transparent|24|4|6|14|400|1|6
+1|0|1|#ffffff|rgba(0,0,0,0.25)|transparent|#ffffff|rgba(0,0,0,0.25)|transparent|24|4|6|14|400|1|6
+1|1|0|#ffffff|#8b5cf6|#8b5cf6|#ffffff|#af87ff|#af87ff|24|4|6|14|600|1|6
+1|1|1|#ffffff|rgba(0,0,0,0.25)|transparent|#ffffff|rgba(0,0,0,0.25)|transparent|24|4|6|14|600|1|6

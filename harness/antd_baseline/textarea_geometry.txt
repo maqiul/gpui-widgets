@@ -1,0 +1,12 @@
+outlined|small|32px|0px|7px|0px|7px|14px|22px|4px|1px|1px|1px|1px
+outlined|middle|32px|4px|11px|4px|11px|14px|22px|6px|1px|1px|1px|1px
+outlined|large|32px|7px|11px|7px|11px|16px|25.1429px|8px|1px|1px|1px|1px
+filled|small|32px|0px|7px|0px|7px|14px|22px|4px|1px|1px|1px|1px
+filled|middle|32px|4px|11px|4px|11px|14px|22px|6px|1px|1px|1px|1px
+filled|large|32px|7px|11px|7px|11px|16px|25.1429px|8px|1px|1px|1px|1px
+borderless|small|32px|0px|7px|0px|7px|14px|22px|4px|1px|1px|1px|1px
+borderless|middle|32px|4px|11px|4px|11px|14px|22px|6px|1px|1px|1px|1px
+borderless|large|32px|7px|11px|7px|11px|16px|25.1429px|8px|1px|1px|1px|1px
+underlined|small|32px|0px|7px|0px|7px|14px|22px|0px|1px|0px|1px|0px
+underlined|middle|32px|4px|11px|4px|11px|14px|22px|0px|1px|0px|1px|0px
+underlined|large|32px|7px|11px|7px|11px|16px|25.1429px|0px|1px|0px|1px|0px

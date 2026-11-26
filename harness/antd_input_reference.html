@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>antdv-next Input 参照页</title>
+<script type="importmap">
+{
+  "imports": {
+    "vue": "./vendor/vue.esm-browser.js",
+    "antdv-next": "./vendor/antd.esm.js"
+  }
+}
+</script>
+<style>
+  html, body { margin: 0; background: #fff; }
+  #root { padding: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 300px); gap: 12px 24px; }
+  .cell { display: flex; flex-direction: column; gap: 4px; }
+  .cell .label { font-size: 11px; color: rgba(0,0,0,.45); }
+  /* 参照页没有引入 antd reset，补齐其 ul 归零规则，避免浏览器默认 1em 外边距污染 Skeleton 布局 */
+  .ant-skeleton-paragraph { margin: 0; padding: 0; }
+  /* 同理补齐 reset 的标题上外边距归零（浏览器 UA 给 h1-h5 0.67em 的 margin-top） */
+  #panel h1.ant-typography, #panel h2.ant-typography, #panel h3.ant-typography,
+  #panel h4.ant-typography, #panel h5.ant-typography { margin-top: 0; }
+  /* Modal/Drawer 截图：fixed 浮层改进行内单元格绝对定位，wrap 居中与 Rust 遮罩 flex 居中一致 */
+  #panel .ant-modal-mask, #panel .ant-modal-wrap { position: absolute; inset: 0; }
+  #panel .ant-modal-wrap { overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  #panel .ant-modal { top: 0; margin: 0; padding-bottom: 0; }
+  #panel .ant-drawer { position: absolute; inset: 0; }
+  /* Spin 动画钉在首帧：rotate 45°、四点 opacity 0.3，与 Rust 静态帧可比 */
+  #panel .ant-spin-dot-spin, #panel .ant-spin-dot-item { animation: none; }
+  /* Rust 浮层只有预设网格：钉掉 antd 预设折叠头与体内边距 */
+  #panel .ant-color-picker-presets .ant-collapse-header { display: none; }
+  #panel .ant-color-picker-presets .ant-collapse-body { padding: 0 !important; }
+  /* 折叠入场动画在虚拟时间下不收敛：inline height 钉回 auto */
+  #panel .ant-color-picker-presets .ant-collapse-content,
+  #panel .ant-color-picker-presets .ant-collapse-content-box { height: auto !important; transition: none !important; }
+  /* Tour：transform 把 fixed 遮罩/浮层钉进每行盒；无 target 的 center 占位浮层位置钉到盒中心
+     （卡片 520×116，盒 528×180）；Rust 侧无箭头 */
+  /* DatePicker 浮层入场动画在虚拟时间下不收敛：钉掉 slide motion */
+  #panel .ant-picker-dropdown { animation: none !important; transition: none !important; }
+  #panel .ant-picker-dropdown .ant-slide-up-enter, #panel .ant-picker-dropdown .ant-slide-up-appear,
+  #panel .ant-picker-dropdown .ant-slide-up-enter-active, #panel .ant-picker-dropdown .ant-slide-up-appear-active { animation: none !important; }
+  /* TimePicker 列：Rust 不自动滚动到选中项，参照钉 scrollTop=0；滚动条隐藏与 gpui 对齐 */
+  #panel .ant-picker-time-panel-column { scrollbar-width: none !important; }
+  #panel .ant-picker-time-panel-column::-webkit-scrollbar { display: none; }
+  #panel .ant-picker-calendar * { transition: none !important; animation: none !important; }
+  /* Popconfirm：钉掉 zoom 入场动画；Rust 侧无箭头 */
+  #panel .ant-popconfirm, #panel .ant-popconfirm * { animation: none !important; transition: none !important; }
+  #panel .ant-popconfirm .ant-popover-arrow { display: none !important; }
+  /* Notification / Message：PurePanel 卡片钉掉入场 motion 与堆栈 scale */
+  #panel .ant-notification, #panel .ant-notification *,
+  #panel .ant-message, #panel .ant-message * { animation: none !important; transition: none !important; }
+  #panel .ant-notification-notice, #panel .ant-message-notice { --notification-scale: 1 !important; transform: none !important; }
+  /* InputNumber：步进列展开/箭头高度过渡钉掉，虚拟时间下不收敛 */
+  #panel .ant-input-number, #panel .ant-input-number * { transition: none !important; }
+  /* 布局族：折叠高度过渡 / 锚点 ink 位移 / 表单提示淡入钉掉，虚拟时间下不收敛 */
+  #panel .ant-collapse, #panel .ant-collapse *, #panel .ant-anchor, #panel .ant-anchor *, #panel .ant-form, #panel .ant-form * { transition: none !important; animation: none !important; }
+  #panel .ant-collapse-content-active { height: auto !important; }
+  /* 选择扩展族：下拉入场 motion / 树展开过渡钉掉，虚拟时间下不收敛 */
+  #panel .ant-select-dropdown, #panel .ant-select-dropdown *,
+  #panel .ant-cascader-dropdown, #panel .ant-cascader-dropdown *,
+  #panel .ant-tree-select-dropdown, #panel .ant-tree-select-dropdown * { transition: none !important; animation: none !important; }
+  #panel .ant-cascader-menu { scrollbar-width: none !important; }
+  #panel .ant-cascader-menu::-webkit-scrollbar { display: none; }
+  /* Rust Tree 无键盘 active 态：钉掉 rc-tree-select 展开时首节点的 active 底（选中节点除外） */
+  #panel .ant-select-tree-treenode-active:not(.ant-select-tree-treenode-selected) .ant-select-tree-node-content-wrapper { background: transparent !important; }
+  /* 浮钮 / 分割族：独立浮钮钉成行内 absolute；分割条预览过渡钉掉 */
+  #panel .ant-float-btn-individual { position: absolute !important; }
+  #panel .ant-splitter, #panel .ant-splitter * { transition: none !important; animation: none !important; }
+  #panel .ant-layout, #panel .ant-layout * { transition: none !important; animation: none !important; }
+  #panel .ant-menu, #panel .ant-menu * { transition: none !important; animation: none !important; }
+  #panel .ant-statistic, #panel .ant-statistic * { transition: none !important; animation: none !important; }
+  #panel kbd { transition: none !important; animation: none !important; }
+  #panel .sb-shot .ant-table, #panel .sb-shot .ant-table * { transition: none !important; animation: none !important; }
+  #panel .sb-shot .ant-table-thead { display: none !important; }
+  #panel .sb-shot .ant-table-tbody-virtual .ant-table-cell { border-bottom: none !important; }
+  #panel .sb-shot .ant-table-tbody-virtual-scrollbar { visibility: visible !important; }
+  #panel .tour-box { transform: translateZ(0); }
+  #panel .tour-box .ant-tour { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%) !important; }
+  #panel .tour-box .ant-tour-arrow { display: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import { createApp, h, onMounted, nextTick } from 'vue';
+import dayjs from './vendor/dayjs/index.js';
+import advancedFormat from './vendor/dayjs/plugin/advancedFormat/index.js';
+import customParseFormat from './vendor/dayjs/plugin/customParseFormat/index.js';
+import localeData from './vendor/dayjs/plugin/localeData/index.js';
+import weekday from './vendor/dayjs/plugin/weekday/index.js';
+import weekOfYear from './vendor/dayjs/plugin/weekOfYear/index.js';
+import weekYear from './vendor/dayjs/plugin/weekYear/index.js';
+dayjs.extend(customParseFormat); dayjs.extend(advancedFormat); dayjs.extend(weekday);
+dayjs.extend(localeData); dayjs.extend(weekOfYear); dayjs.extend(weekYear);
+import { Alert, Avatar, Badge, Breadcrumb, Button, Card, Carousel, Cascader, Collapse, CollapsePanel, Anchor, ColorPicker, ConfigProvider, DatePicker, TimePicker, Calendar, Checkbox, Descriptions, Divider, Drawer, Dropdown, Empty, FloatButton, Form, FormItem, Input, InputNumber, InputPassword, Layout, LayoutContent, LayoutFooter, LayoutHeader, LayoutSider, Menu, Modal, NotificationPurePanel, MessagePurePanel, MessagePurePanelStyle, Pagination, Space, Popconfirm, Popover, Progress, Radio, Rate, Result, Row, Col, Segmented, Select, Skeleton, Slider, Spin, Splitter, SplitterPanel, Statistic, StatisticTimer, Steps, Switch, Table, Tabs, Tag, TextArea, Timeline, Tour, Transfer, Tree, TreeSelect, Tooltip, Typography, UploadDragger, theme as antTheme } from 'antdv-next';
+
+const VARIANTS = ['outlined', 'filled', 'borderless', 'underlined'];
+const STATUSES = ['default', 'error', 'warning'];
+const SIZES = ['small', 'middle', 'large'];
+
+// 矩阵：variant × status × size 各一格；disabled 单独一组（换 disabled 伪类的真实属性）
+const ROWS = [];
+for (const variant of VARIANTS) {
+  for (const status of STATUSES) {
+    for (const size of SIZES) {
+      for (const state of ['normal', 'disabled']) {
+        ROWS.push({ variant, status, size, state });
+      }
+    }
+  }
+}
+
+const MatrixApp = {
+  props: {
+    algorithm: { default: 'light' },
+    accent: { default: null },
+    kind: { default: 'input' },
+  },
+  setup(props) {
+    return () =>
+      h(
+        ConfigProvider,
+        {
+          theme: {
+            algorithm: props.algorithm === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+            token: props.accent ? { colorPrimary: props.accent } : {},
+          },
+        },
+        () =>
+          h(
+            'div',
+            { class: 'grid' },
+            ROWS.map(({ variant, status, size, state }) => {
+              const Component = props.kind === 'textarea' ? TextArea : Input;
+              return h('div', { class: 'cell' }, [
+                h('span', { class: 'label' }, `${variant}/${status}/${size}/${state}`),
+                h(Component, {
+                  variant,
+                  status: status === 'default' ? undefined : status,
+                  size,
+                  disabled: state === 'disabled',
+                  placeholder: 'placeholder',
+                  style: props.kind === 'textarea' ? { width: '240px' } : undefined,
+                  'data-cell': `${variant}|${status}|${size}|${state}`,
+                }),
+              ]);
+            }),
+          ),
+      );
+  },
+};
+
+let app = null;
+const remount = (component, props) => {
+  if (app) {
+    app.unmount();
+    app = null;
+    document.getElementById('root').innerHTML = '';
+  }
+  app = createApp(component, props);
+  app.mount(document.getElementById('root'));
+  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 80))));
+};
+
+window.__matrix = (algorithm, accent, kind) =>
+  remount(MatrixApp, {
+    algorithm: algorithm || 'light',
+    accent: accent || null,
+    kind: kind || 'input',
+  });
+
+// 采集脚本用：把每个格子的内部 input / textarea 元素暴露出来
+// （Input / TextArea 都可能把原生控件包进 wrapper）
+window.__cells = () =>
+  [...document.querySelectorAll('[data-cell]')].map((el) => {
+    const input = el.matches('input, textarea') ? el : el.querySelector('input, textarea');
+    return { key: el.getAttribute('data-cell'), root: el, input };
+  });
+
+// ---- 截图面板：与 Rust 侧 examples/input_panel_shot.rs 同构 ----
+// 一个变体一张图，12 行 = 3 种 status × (small / middle / large / disabled)。
+// 几何常量必须和 harness/shot_diff.py 一致：pad 16 / 行带 56（控件 40 + 间隙 16）/ label 140 / 行内 gap 8。
+const PANEL = { pad: 16, rowH: 40, rowGap: 16, label: 140, gap: 8, width: 420, cell: 240 };
+const PANEL_ROWS = [];
+for (const status of ['default', 'error', 'warning']) {
+  for (const [size, text, extra] of [
+    ['small', 'S', {}],
+    ['middle', 'M', {}],
+    ['large', 'L', {}],
+    ['middle', 'off', { disabled: true }],
+  ]) {
+    PANEL_ROWS.push([`${status}-${text}`, status, size, extra]);
+  }
+}
+
+// Tag 面板：12 行覆盖 outlined / filled / solid × 默认灰 / 预置蓝 / 状态成功 / 禁用。
+const TAG_ROWS = [  ['out-default', {}],
+  ['out-blue', { color: 'blue' }],
+  ['out-success', { color: 'success' }],
+  ['out-error', { color: 'error' }],
+  ['out-warning', { color: 'warning' }],
+  ['fill-default', { variant: 'filled' }],
+  ['fill-blue', { color: 'blue', variant: 'filled' }],
+  ['fill-success', { color: 'success', variant: 'filled' }],
+  ['solid-default', { variant: 'solid' }],
+  ['solid-blue', { color: 'blue', variant: 'solid' }],
+  ['off-outlined', { disabled: true }],
+  ['off-solid', { color: 'blue', variant: 'solid', disabled: true }],
+];
+
+const MENU_ITEMS = [
+  { key: 'a', label: '编辑' },
+  { key: 'b', label: '复制' },
+  { type: 'divider' },
+  { key: 'c', label: '删除', danger: true },
+  { key: 'd', label: '禁用项', disabled: true },
+];
+
+// 零高度触发器把浮层钉在固定坐标，截图只比对浮层覆盖到的行带
+const overlayAnchor = (cell, child, top = PANEL.pad + 36) =>
+  h(
+    'div',
+    {
+      style: {
+        position: 'absolute',
+        left: `${PANEL.pad + PANEL.label + PANEL.gap}px`,
+        top: `${top}px`,
+        width: `${cell}px`,
+        height: '0px',
+      },
+    },
+    child,
+  );
+
+const menuOverlay = (cell) =>
+  overlayAnchor(
+    cell,
+    h(
+      Dropdown,
+      { open: true, trigger: ['click'], menu: { items: MENU_ITEMS } },
+      () => h('div', { style: { width: `${cell}px`, height: '0px' } }),
+    ),
+  );
+
+const tooltipOverlay = (cell) =>
+  overlayAnchor(
+    cell,
+    h(
+      Tooltip,
+      { open: true, placement: 'bottomLeft', title: '工具提示文字' },
+      () => h('div', { style: { width: `${cell}px`, height: '0px' } }),
+    ),
+  );
+
+const popoverOverlay = (cell) =>
+  overlayAnchor(
+    cell,
+    h(
+      Popover,
+      {
+        open: true,
+        placement: 'bottomLeft',
+        content: h('div', { style: { width: `${cell - 2 * 12}px` } }, '气泡内容'),
+      },
+      () => h('div', { style: { width: `${cell}px`, height: '0px' } }),
+    ),
+  );
+
+// 气泡确认框：默认（标题+描述）/ 仅标题（only-child 常规字重）/ okType danger
+const POPCONFIRM_LABELS = ['default', 'plain', 'danger'];
+const POPCONFIRM_CASES = [
+  { title: 'Delete this item?', description: 'This action cannot be undone.' },
+  { title: 'Delete this item?' },
+  { title: 'Delete this item?', description: 'This action cannot be undone.', okType: 'danger' },
+];
+const popconfirmOverlay = (cell, row) =>
+  overlayAnchor(
+    cell,
+    h(
+      Popconfirm,
+      {
+        open: true,
+        placement: 'bottomLeft',
+        okText: 'OK',
+        cancelText: 'Cancel',
+        getPopupContainer: () => document.getElementById('panel'),
+        ...POPCONFIRM_CASES[row],
+      },
+      () => h('div', { style: { width: `${cell}px`, height: '0px' } }),
+    ),
+    PANEL.pad + row * 176 + 36,
+  );
+
+// Notification / Message：PurePanel 行内渲染卡片（无 portal、无堆栈折叠动画）
+const NOTIFICATION_LABELS = ['default', 'plain', 'warning'];
+const NOTIFICATION_CASES = [
+  {
+    type: 'info',
+    title: 'Notification Title',
+    description: 'This is the content of the notification.',
+    actions: h(Button, { type: 'primary', size: 'small' }, () => 'Confirm'),
+  },
+  { type: 'success', title: 'Success' },
+  {
+    type: 'warning',
+    title: 'Warning Title',
+    description: 'This is the content of the notification.',
+    closable: false,
+  },
+];
+const MESSAGE_LABELS = ['info', 'success', 'error'];
+const MESSAGE_CASES = [
+  { type: 'info', content: 'This is a message' },
+  { type: 'success', content: 'Success message' },
+  { type: 'error', content: 'Error message' },
+];
+
+// 输入复合族：InputNumber（handleVisible:true 常显步进列）/ Password / Search(prefix+allowClear)
+const NUMBERINPUT_LABELS = ['default', 'filled', 'small', 'large', 'disabled', 'error'];
+const NUMBERINPUT_CASES = [
+  { value: 3 },
+  { value: 3, variant: 'filled' },
+  { value: 3, size: 'small' },
+  { value: 3, size: 'large' },
+  { value: 3, disabled: true },
+  { value: 3, status: 'error' },
+];
+const PASSWORD_LABELS = ['masked', 'visible', 'filled', 'small', 'large', 'disabled'];
+const PASSWORD_CASES = [
+  { value: 'secret' },
+  { value: 'secret' },
+  { value: 'secret', variant: 'filled' },
+  { value: 'secret', size: 'small' },
+  { value: 'secret', size: 'large' },
+  { value: 'secret', disabled: true },
+];
+const SEARCH_PATH = 'M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z';
+const searchPrefix = () => h('span', {
+  class: 'anticon',
+  innerHTML: `<svg viewBox="64 64 896 896" fill="currentColor" width="1em" height="1em" xmlns="http://www.w3.org/2000/svg"><path d="${SEARCH_PATH}"></path></svg>`,
+});
+const SEARCH_LABELS = ['empty', 'text', 'focused', 'small', 'large', 'disabled'];
+const SEARCH_CASES = [
+  { allowClear: true },
+  { value: 'abc', allowClear: true },
+  { allowClear: true, autoFocus: true },
+  { size: 'small', allowClear: true },
+  { size: 'large', allowClear: true },
+  { value: 'abc', allowClear: true, disabled: true },
+];
+
+// 布局族：Collapse（箭头置右）/ Anchor（连续轨 + ink）/ Form.Item（标签 + 星号 + 提示）
+const COLLAPSE_LABELS = ['open', 'closed', 'small', 'large', 'disabled'];
+function collapseCase(index, cell) {
+  const size = index === 2 ? 'small' : index === 3 ? 'large' : undefined;
+  const active = index === 1 ? [] : ['1'];
+  const panel = (key, header, disabled) =>
+    h(CollapsePanel, { key, header, collapsible: disabled ? 'disabled' : undefined, forceRender: true }, () => 'Content line');
+  return h(
+    Collapse,
+    { activeKey: active, expandIconPlacement: 'end', size, style: { width: `${cell}px` } },
+    () => [panel('1', 'Header', index === 4)],
+  );
+}
+const ANCHOR_LABELS = ['active', 'child', 'none', 'leaf'];
+const ANCHOR_ITEMS = [
+  { key: 'a', href: '#a', title: 'Basic' },
+  {
+    key: 'b', href: '#b', title: 'API',
+    children: [
+      { key: 'b1', href: '#b1', title: 'Props' },
+      { key: 'b2', href: '#b2', title: 'Events' },
+    ],
+  },
+  { key: 'c', href: '#c', title: 'FAQ' },
+];
+function anchorCase(index, cell) {
+  const active = ['#a', '#b1', '', '#c'][index];
+  return h(Anchor, {
+    affix: false,
+    items: ANCHOR_ITEMS,
+    getCurrentAnchor: () => active,
+    style: { width: `${cell}px` },
+  });
+}
+const FORM_LABELS = ['default', 'required', 'error', 'extra', 'small'];
+function formCase(index, cell) {
+  const item = {
+    label: 'Name',
+    required: index === 1,
+    validateStatus: index === 2 ? 'error' : undefined,
+    help: index === 2 ? 'Please input name' : undefined,
+    extra: index === 3 ? 'Extra help text' : undefined,
+  };
+  return h(
+    Form,
+    {
+      layout: 'vertical',
+      size: index === 4 ? 'small' : undefined,
+      style: { width: `${cell}px` },
+    },
+    () => [h(FormItem, item, () => h(Input, { style: { width: '100%' } }))],
+  );
+}
+
+// 级联选择：触发框默认宽 controlWidth(184)；浮层列最小宽 111 / 列高 180。
+// 文案用 ASCII，避免中英字体宽度差污染文字带比对。
+const CASCADER_DATA = [
+  { value: 'a', label: 'Alpha', children: [
+    { value: 'a1', label: 'Ant', children: [{ value: 'a1x', label: 'Axon' }] },
+    { value: 'a2', label: 'Axe', disabled: true },
+  ] },
+  { value: 'b', label: 'Beta', children: [{ value: 'b1', label: 'Bee' }] },
+  { value: 'c', label: 'Gamma' },
+];
+const CASCADER_LABELS = ['default', 'filled', 'small', 'large', 'disabled', 'error'];
+const CASCADER_CASES = [
+  { value: ['a', 'a1'] },
+  { value: ['a', 'a1'], variant: 'filled' },
+  { value: ['a', 'a1'], size: 'small' },
+  { value: ['a', 'a1'], size: 'large' },
+  { value: ['a', 'a1'], disabled: true },
+  { value: ['a', 'a1'], status: 'error' },
+];
+const CASCADER2_LABELS = ['two', 'three'];
+const CASCADER2_CASES = [{ value: ['a'] }, { value: ['a', 'a1'] }];
+
+// 树选择：浮层内边距 8×4，内部树与 kind=tree 同源数据。
+const TREESELECT_DATA = [
+  { value: 'src', title: 'src', children: [
+    { value: 'src-main', title: 'main.rs' },
+    { value: 'src-lib', title: 'lib.rs' },
+  ] },
+  { value: 'readme', title: 'README.md' },
+];
+const TREESELECT_LABELS = ['default', 'filled', 'small', 'large', 'disabled', 'error'];
+const TREESELECT_CASES = [
+  { value: 'src-lib' },
+  { value: 'src-lib', variant: 'filled' },
+  { value: 'src-lib', size: 'small' },
+  { value: 'src-lib', size: 'large' },
+  { value: 'src-lib', disabled: true },
+  { value: 'src-lib', status: 'error' },
+];
+const TREESELECT2_LABELS = ['selected', 'collapsed'];
+const TREESELECT2_CASES = [
+  { value: 'src-lib', treeDefaultExpandAll: true },
+  {},
+];
+
+// 浮钮面板：默认 / 主色 / 方形 / 禁用；独立按钮钉成 absolute 落在各行相对盒内。
+const FLOATBUTTON_LABELS = ['default', 'primary', 'square', 'disabled'];
+const FLOATBUTTON_CASES = [
+  {},
+  { type: 'primary' },
+  { shape: 'square' },
+  { disabled: true },
+];
+// 分割面板：左右 / 上下，各 50%。
+const SPLITTER_LABELS = ['horizontal', 'vertical'];
+// 布局容器：默认深navy sider / light sider。
+const LAYOUT_LABELS = ['dark', 'light'];
+// 栅格：gutter 对半 / 三等分 / offset。
+const GRID_LABELS = ['gutter', 'thirds', 'offset'];
+// 导航菜单：选中 / 展开子菜单（子选中） / 图标+禁用。每行 3 条目 ×(40+8)=144。
+const NAVMENU_LABELS = ['selected', 'submenu', 'states'];
+const NAVMENU_ITEMS = [
+  [
+    { key: 'home', label: '首页' },
+    { key: 'docs', label: '文档' },
+    { key: 'about', label: '关于' },
+  ],
+  [
+    {
+      key: 'settings',
+      label: '设置',
+      children: [
+        { key: 'profile', label: '个人资料' },
+        { key: 'security', label: '安全' },
+      ],
+    },
+  ],
+  [
+    { key: 'icon', label: '带图标', icon: () => h('span', {}, '⌂') },
+    { key: 'off', label: '禁用', disabled: true },
+    { key: 'plain', label: '普通' },
+  ],
+];
+const NAVMENU_PROPS = [
+  { selectedKeys: ['home'] },
+  { selectedKeys: ['profile'], openKeys: ['settings'] },
+  { selectedKeys: ['plain'] },
+];
+// 倒计时：分钟级 / 天级格式；偏移含 55 秒余量，虚拟时间预算内显示稳定。
+const COUNTDOWN_LABELS = ['minutes', 'days'];
+const COUNTDOWN_OFFSETS = [9055, 185155];
+const COUNTDOWN_FORMATS = ['HH:mm', 'D 天 HH 时 mm 分'];
+// 键帽：单键 / 双键组合 / 三键组合（antd Typography kbd 重置样式，逐键一个 <kbd>）。
+const KBD_LABELS = ['single', 'combo', 'triple'];
+const KBD_KEYS = [['Enter'], ['Ctrl', 'K'], ['Ctrl', 'Shift', 'P']];
+// 滚动条：Table virtual 的 rc-virtual-list 纵向滚动条（隐表头、去行边框、强制可见）。
+const SCROLLBAR_LABELS = ['vertical'];
+
+// 单选框面板：未选 / 选中 × 正常 / 禁用，另三行为带标签状态。
+const RADIO_LABELS = [
+  'off', 'on', 'disabled-off', 'disabled-on', 'label-off', 'label-on', 'label-disabled',
+  '', '', '', '', '',
+];
+const RADIO_CASES = [
+  {},
+  { checked: true },
+  { disabled: true },
+  { checked: true, disabled: true },
+  { children: '选项' },
+  { checked: true, children: '选项' },
+  { checked: true, disabled: true, children: '选项' },
+];
+
+// 复选框面板：未选 / 选中 / 半选 × 正常 / 禁用，另两行为带标签状态。
+const CHECKBOX_LABELS = [
+  'off', 'on', 'indet', 'disabled-off', 'disabled-on', 'disabled-indet',
+  'label-on', 'label-disabled', '', '', '', '',
+];
+const CHECKBOX_CASES = [
+  {},
+  { checked: true },
+  { indeterminate: true },
+  { disabled: true },
+  { checked: true, disabled: true },
+  { indeterminate: true, disabled: true },
+  { checked: true, children: '选项' },
+  { checked: true, disabled: true, children: '选项' },
+];
+
+// 开关面板：默认 / 小尺寸 / 禁用 / 加载 / 轨道文字，各覆盖开与关。
+const SWITCH_LABELS = [
+  'off', 'on', 'small-off', 'small-on', 'disabled-off', 'disabled-on', 'loading', 'text-off',
+  '', '', '', '',
+];
+const SWITCH_CASES = [
+  {},
+  { checked: true },
+  { size: 'small' },
+  { size: 'small', checked: true },
+  { disabled: true },
+  { disabled: true, checked: true },
+  { loading: true, checked: true },
+  { checkedChildren: '开', unCheckedChildren: '关' },
+];
+
+// 分页面板：默认 / 小尺寸 / 首页（上一页禁用）/ 末页（下一页禁用）。
+// 关闭 size changer，使其与 Rust 侧精简 API（只有页码与翻页）同构。
+const PAGINATION_CASES = [
+  { current: 2, total: 70 },
+  { current: 2, total: 70, size: 'small' },
+  { current: 1, total: 70 },
+  { current: 7, total: 70 },
+];
+
+// 进度面板：正常 / 小尺寸 / 隐藏指示器 / 成功 / 异常 / 进行中 + 两行分段。
+const PROGRESS_LABELS = [
+  'line-30', 'line-30-small', 'line-30-noinfo', 'line-success', 'line-exception',
+  'line-active', 'steps-5', 'steps-5-small', '', '', '', '',
+];
+const PROGRESS_CASES = [
+  { percent: 30 },
+  { percent: 30, size: 'small' },
+  { percent: 30, showInfo: false },
+  { percent: 100, status: 'success' },
+  { percent: 50, status: 'exception' },
+  { percent: 50, status: 'active' },
+  { percent: 30, steps: 5 },
+  { percent: 30, steps: 5, size: 'small' },
+];
+
+// 头像面板：默认 / 小 / 大 × 圆形 / 方形。
+const AVATAR_LABELS = [
+  'default', 'small', 'large', 'square', 'square-small', 'square-large', '', '', '', '', '', '',
+];
+const AVATAR_CASES = [
+  {},
+  { size: 'small' },
+  { size: 'large' },
+  { shape: 'square' },
+  { shape: 'square', size: 'small' },
+  { shape: 'square', size: 'large' },
+];
+
+// 角标面板：计数 / 封顶 / 零值 / 圆点 / 显示零 / 自定义色。
+const BADGE_LABELS = [
+  'count-5', 'count-max', 'count-zero', 'dot', 'show-zero', 'custom', '', '', '', '', '', '',
+];
+const BADGE_CASES = [
+  { count: 5 },
+  { count: 100, overflowCount: 99 },
+  { count: 0 },
+  { dot: true },
+  { count: 0, showZero: true },
+  { count: 5, color: '#1677ff' },
+];
+
+// 面包屑面板：默认 / 单项 / 自定义分隔符 › / 斜杠。
+const BREADCRUMB_LABELS = ['basic', 'single', 'separator', 'slash', '', '', '', '', '', '', '', ''];
+const BREADCRUMB_CASES = [
+  { items: [{ title: 'Home' }, { title: 'Products' }, { title: 'Widgets' }] },
+  { items: [{ title: 'Home' }] },
+  { separator: '›', items: [{ title: 'Home' }, { title: 'Products' }, { title: 'Widgets' }] },
+  { separator: '/', items: [{ title: 'Home' }, { title: 'Products' }, { title: 'Widgets' }] },
+];
+
+// 骨架屏面板：单行 / 60% 行 / 头像 32 / 头像 40 / 按钮 / 输入框 / 两行。
+const SKELETON_LABELS = [
+  'line', 'line-60', 'avatar-32', 'avatar-40', 'button', 'input', 'lines-2', '', '', '', '', '',
+];
+const SKELETON_CASES = [
+  { type: 'paragraph', rows: 1 },
+  { type: 'paragraph', rows: 1, width: '60%' },
+  { type: 'avatar', size: 32 },
+  { type: 'avatar', size: 40 },
+  { type: 'button' },
+  { type: 'input' },
+  { type: 'paragraph', rows: 2 },
+];
+
+// 提示条面板：无图标 / 三种变体图标 / 带描述 / banner / 可关闭。
+const ALERT_LABELS = [
+  'info', 'success-icon', 'warning-icon', 'error-icon', 'banner', 'close', 'description', '', '', '', '', '',
+];
+const ALERT_CASES = [
+  { type: 'info', message: 'Info text' },
+  { type: 'success', message: 'Success text', showIcon: true },
+  { type: 'warning', message: 'Warning text', showIcon: true },
+  { type: 'error', message: 'Error text', showIcon: true },
+  { type: 'info', message: 'Banner text', banner: true },
+  { type: 'success', message: 'Closable text', showIcon: true, closable: true },
+  { type: 'info', message: 'Title', description: 'Description text', showIcon: true },
+];
+
+// 卡片面板：有边框 / 无边框 / 封面。
+const CARD_LABELS = ['bordered', 'borderless', 'cover', '', '', '', '', '', '', '', '', ''];
+const CARD_CASES = [
+  { bordered: true },
+  { bordered: false },
+  { bordered: true, cover: true },
+];
+
+const cardContent = (item) =>
+  h(
+    Card,
+    {
+      title: 'Card title',
+      extra: 'More',
+      bordered: item.bordered,
+      cover: item.cover ? h('div', { style: { height: '40px', background: 'rgba(0,0,0,0.06)' } }) : undefined,
+      actions: [h('span', null, 'Action 1'), h('span', null, 'Action 2')],
+      style: { width: `${PANEL.cell}px` },
+    },
+    { default: () => h('div', null, 'Card content') },
+  );
+
+// 步骤条面板：filled / outlined / small / vertical / error，行高 120（两个步骤）。
+const STEPS_LABELS = ['filled', 'outlined', 'small', 'vertical', 'error', '', '', '', '', '', '', ''];
+const STEPS_ITEMS = [
+  { title: 'Finished', description: 'Desc 1' },
+  { title: 'In Process', description: 'Desc 2' },
+];
+const STEPS_CASES = [
+  { current: 1, items: STEPS_ITEMS },
+  { variant: 'outlined', current: 1, items: STEPS_ITEMS },
+  { size: 'small', current: 1, items: STEPS_ITEMS },
+  { orientation: 'vertical', current: 0, items: STEPS_ITEMS },
+  { current: 1, status: 'error', items: STEPS_ITEMS },
+];
+
+// 时间线面板：单列 / 带标题两栏 / 交替 / 语义色 / 进行中，行高 120。
+const TIMELINE_LABELS = ['plain', 'title', 'alternate', 'colors', 'pending', '', '', '', '', '', '', ''];
+const TIMELINE_PLAIN = [
+  { content: 'Create a services site' },
+  { content: 'Solve network problems' },
+  { content: 'Technical testing' },
+];
+const TIMELINE_TITLED = [
+  { title: '2015-09-01', content: 'Created' },
+  { title: '2015-09-02', content: 'Solved' },
+  { title: '2015-09-03', content: 'Tested' },
+];
+const TIMELINE_CASES = [
+  { items: TIMELINE_PLAIN.slice(0, 2) },
+  { items: TIMELINE_TITLED.slice(0, 2) },
+  { mode: 'alternate', items: TIMELINE_TITLED.slice(0, 2) },
+  { items: [
+    { color: 'blue', content: 'blue' },
+    { color: 'red', content: 'red' },
+  ] },
+  { items: TIMELINE_PLAIN.slice(0, 1), pending: 'Recording...' },
+];
+
+// 分段选择器面板：默认 / 选中第二项 / 小 / 大 / 撑满 / 禁用。
+const SEGMENTED_LABELS = ['default', 'second', 'small', 'large', 'block', 'disabled', '', '', '', '', '', ''];
+const SEGMENTED_OPTIONS = ['Day', 'Week', 'Month'];
+const SEGMENTED_CASES = [
+  { options: SEGMENTED_OPTIONS, defaultValue: 'Day' },
+  { options: SEGMENTED_OPTIONS, defaultValue: 'Week' },
+  { options: SEGMENTED_OPTIONS, defaultValue: 'Day', size: 'small' },
+  { options: SEGMENTED_OPTIONS, defaultValue: 'Day', size: 'large' },
+  { options: SEGMENTED_OPTIONS, defaultValue: 'Day', block: true },
+  { options: SEGMENTED_OPTIONS, defaultValue: 'Day', disabled: true },
+];
+
+// 标签页面板：下划线默认/第二项/禁用/小/大 + 卡片默认/第二项/可关闭。
+const TABS_LABELS = ['default', 'second', 'disabled', 'small', 'large', 'card', 'card-second', 'card-closable', '', '', '', ''];
+const TABS_ITEMS = [
+  { key: '1', label: 'Tab 1' },
+  { key: '2', label: 'Tab 2' },
+  { key: '3', label: 'Tab 3' },
+];
+const TABS_CASES = [
+  { items: TABS_ITEMS, defaultActiveKey: '1' },
+  { items: TABS_ITEMS, defaultActiveKey: '2' },
+  { items: [{ ...TABS_ITEMS[0] }, { ...TABS_ITEMS[1], disabled: true }, { ...TABS_ITEMS[2] }], defaultActiveKey: '1' },
+  { items: TABS_ITEMS, defaultActiveKey: '1', size: 'small' },
+  { items: TABS_ITEMS, defaultActiveKey: '1', size: 'large' },
+  { items: TABS_ITEMS, defaultActiveKey: '1', type: 'card' },
+  { items: TABS_ITEMS, defaultActiveKey: '2', type: 'card' },
+  { items: TABS_ITEMS.slice(0, 2), defaultActiveKey: '1', type: 'editable-card', hideAdd: true },
+];
+
+// 统计值面板：默认 / 前缀 / 后缀 / 长数字 / 空。
+const STATISTIC_LABELS = ['default', 'prefix', 'suffix', 'long', '', '', '', '', '', '', '', ''];
+const STATISTIC_CASES = [
+  { title: 'Active Users', value: '112,893' },
+  { title: 'Account Balance', value: '112,893', prefix: '¥' },
+  { title: 'Feedback', value: '28,431', suffix: '人' },
+  { title: 'Downloads', value: '1,234,567' },
+  null,
+];
+
+// 链接面板：默认 / 长文本 / 禁用 / 空。
+const LINK_LABELS = ['default', 'long', 'disabled', '', '', '', '', '', '', '', '', ''];
+const LINK_CASES = [
+  { children: 'Link' },
+  { children: 'Long link text' },
+  { children: 'Disabled', disabled: true },
+  null,
+];
+
+// 滑杆面板：默认 / 高值 / 带刻度 / 禁用 / 步进 / 空。
+const SLIDER_LABELS = ['default', 'second', 'marks', 'disabled', 'step', '', '', '', '', '', '', ''];
+const SLIDER_MARKS = { 0: '0', 50: '50', 100: '100' };
+const SLIDER_CASES = [
+  { value: 30 },
+  { value: 60 },
+  { value: 40, marks: SLIDER_MARKS },
+  { value: 30, disabled: true },
+  { value: 50, step: 10 },
+  null,
+];
+
+// 排版面板：标题 1/3/5、默认/次要/错误文本、代码与高亮。
+const TYPOGRAPHY_LABELS = ['title1', 'title3', 'title5', 'text', 'secondary', 'danger', 'code', 'mark', '', '', '', ''];
+const TYPOGRAPHY_CASES = [
+  { kind: 'title', level: 1, children: 'Title 1' },
+  { kind: 'title', level: 3, children: 'Title 3' },
+  { kind: 'title', level: 5, children: 'Title 5' },
+  { kind: 'text', children: 'Default text' },
+  { kind: 'text', type: 'secondary', children: 'Secondary' },
+  { kind: 'text', type: 'danger', children: 'Danger' },
+  { kind: 'text', code: true, children: 'code' },
+  { kind: 'text', mark: true, children: 'mark' },
+  null,
+];
+
+// 描述列表面板：无边框 / 带边框 / 带边框+垂直。
+const DESCRIPTIONS_ITEMS = [
+  { key: 'name', label: 'Name', content: 'Tom' },
+  { key: 'phone', label: 'Phone', content: '123' },
+  { key: 'city', label: 'City', content: 'NYC' },
+  { key: 'email', label: 'Email', content: 'a@b.c' },
+];
+const DESCRIPTIONS_LABELS = ['default', 'bordered', 'vertical', '', '', '', '', '', '', '', '', ''];
+const DESCRIPTIONS_CASES = [
+  { title: 'User Info', column: 1, items: DESCRIPTIONS_ITEMS.slice(0, 3) },
+  { title: 'User Info', column: 1, bordered: true, items: DESCRIPTIONS_ITEMS.slice(0, 3) },
+  { title: 'User Info', column: 2, bordered: true, layout: 'vertical', items: DESCRIPTIONS_ITEMS.slice(0, 2) },
+  null,
+];
+
+// 分隔线面板：默认 / 虚线 / 带文字 / 左对齐文字 / plain 文字。
+const DIVIDER_LABELS = ['default', 'dashed', 'text', 'start', 'plain', '', '', '', '', '', '', ''];
+const DIVIDER_CASES = [
+  {},
+  { dashed: true },
+  { children: 'Text' },
+  { orientation: 'left', children: 'Text' },
+  { plain: true, children: 'Text' },
+  null,
+];
+
+// 间距面板：预设 small / middle / large 与垂直排列。
+const SPACE_LABELS = ['small', 'middle', 'large', 'vertical', '', '', '', '', '', '', '', ''];
+const SPACE_CASES = [
+  { size: 'small', direction: 'horizontal' },
+  { size: 'middle', direction: 'horizontal' },
+  { size: 'large', direction: 'horizontal' },
+  { size: 'small', direction: 'vertical' },
+  null,
+];
+
+// 结果页面板：仅标题，四种状态
+const RESULT_LABELS = ['success', 'error', 'warning', '', '', '', '', '', '', '', '', ''];
+const RESULT_CASES = [
+  { status: 'success', title: 'Success' },
+  { status: 'error', title: 'Error' },
+  { status: 'warning', title: 'Warning' },
+  null,
+];
+
+// 树面板：默认 / 勾选 / 选中
+const TREE_DATA = [
+  { title: 'src', key: 'src', children: [
+    { title: 'main.rs', key: 'src-main' },
+    { title: 'lib.rs', key: 'src-lib' },
+  ] },
+  { title: 'README.md', key: 'readme' },
+];
+const TREE_LABELS = ['default', 'checkable', 'selected', '', '', '', '', '', '', '', '', ''];
+const TREE_CASES = [
+  { treeData: TREE_DATA, defaultExpandAll: true },
+  { treeData: TREE_DATA, defaultExpandAll: true, checkable: true, defaultCheckedKeys: ['src-main'] },
+  { treeData: TREE_DATA, defaultExpandAll: true, selectedKeys: ['src-lib'] },
+  null,
+];
+
+// 表格面板：默认 / 全边框 / 勾选选中
+const TABLE_COLUMNS = [
+  { title: 'Name', dataIndex: 'name', key: 'name', width: 80 },
+  { title: 'City', dataIndex: 'city', key: 'city', width: 80 },
+  { title: 'Job', dataIndex: 'job', key: 'job', width: 80 },
+];
+const TABLE_COLUMNS_SEL = TABLE_COLUMNS.map((c) => ({ ...c, width: 68 }));
+const TABLE_DATA = [
+  { key: '1', name: 'Tom', city: 'NYC', job: 'Dev' },
+  { key: '2', name: 'Jim', city: 'LA', job: 'QA' },
+  { key: '3', name: 'Joe', city: 'SF', job: 'Ops' },
+];
+const TABLE_LABELS = ['default', 'bordered', 'selected', '', '', '', '', '', '', '', '', ''];
+const TABLE_CASES = [
+  { columns: TABLE_COLUMNS, dataSource: TABLE_DATA, pagination: false },
+  { columns: TABLE_COLUMNS, dataSource: TABLE_DATA, pagination: false, bordered: true },
+  { columns: TABLE_COLUMNS_SEL, dataSource: TABLE_DATA, pagination: false, rowSelection: { selectedRowKeys: ['2'] } },
+  null,
+];
+
+// 上传拖拽区面板：带提示 / 仅文案 / 禁用
+const INBOX_PATH = 'M885.2 446.3l-.2-.8-112.2-285.1c-5-16.1-19.9-27.2-36.8-27.2H281.2c-17 0-32.1 11.3-36.9 27.6L139.4 443l-.3.7-.2.8c-1.3 4.9-1.7 9.9-1 14.8-.1 1.6-.2 3.2-.2 4.8V830a60.9 60.9 0 0060.8 60.8h627.2c33.5 0 60.8-27.3 60.9-60.8V464.1c0-1.3 0-2.6-.1-3.7.4-4.9 0-9.6-1.3-14.1zm-295.8-43l-.3 15.7c-.8 44.9-31.8 75.1-77.1 75.1-22.1 0-41.1-7.1-54.8-20.6S436 441.2 435.6 419l-.3-15.7H229.5L309 210h399.2l81.7 193.3H589.4zm-375 76.8h157.3c24.3 57.1 76 90.8 140.4 90.8 33.7 0 65-9.4 90.3-27.2 22.2-15.6 39.5-37.4 50.7-63.6h156.5V814H214.4V480.1z';
+const UPLOAD_LABELS = ['hint', 'text', 'disabled', '', '', '', '', '', '', '', '', ''];
+const UPLOAD_CASES = [
+  { hint: 'Single or bulk' },
+  {},
+  { disabled: true, hint: 'Single or bulk' },
+  null,
+];
+// 轮播面板：首页 / 第二页 / 单页；slide 用 antd 演示纯色块（内容色，非令牌）
+// Modal 面板：默认 / 无关闭按钮 / 窄宽（320/280 放进 388 单元格，遮罩探针在左）。
+const MODAL_LABELS = ['default', 'noclose', 'narrow', '', '', '', '', '', '', '', '', ''];
+const MODAL_CASES = [{}, { closable: false }, { width: 280 }];
+// Drawer 面板：默认 / 无底部 / 无关闭按钮（全右侧，左侧留遮罩探针带）。
+const DRAWER_LABELS = ['default', 'nofooter', 'noclose', '', '', '', '', '', '', '', '', ''];
+const DRAWER_CASES = [{}, { footer: false }, { closable: false }];
+const RATING_LABELS = ['default', 'half', 'small', 'large', 'disabled', '', '', '', '', '', '', ''];
+const RATING_CASES = [
+  { value: 3 },
+  { value: 2.5, allowHalf: true },
+  { value: 3, size: 'small' },
+  { value: 3, size: 'large' },
+  { value: 3, disabled: true },
+];
+const SPIN_LABELS = ['default', 'small', 'large', 'tip', '', '', '', '', '', '', '', ''];
+const SPIN_CASES = [{}, { size: 'small' }, { size: 'large' }, { tip: 'Loading...' }];
+const EMPTY_LABELS = ['default', 'simple'];
+const EMPTY_CASES = [
+  { description: 'No data' },
+  { description: 'No data', image: Empty.PRESENTED_IMAGE_SIMPLE },
+];
+const EMPTY2_LABELS = ['footer', 'nodesc'];
+const EMPTY2_CASES = [
+  { description: 'No data', footer: true },
+  { description: '' },
+];
+const COLORPICKER_LABELS = ['default', 'small', 'large', 'disabled'];
+const COLORPICKER_CASES = [
+  { value: '#1677ff' },
+  { value: '#1677ff', size: 'small' },
+  { value: '#1677ff', size: 'large' },
+  { value: '#1677ff', disabled: true },
+];
+const COLORPICKER2_LABELS = ['open', 'open-small'];
+const COLORPICKER2_CASES = [
+  { value: '#ef4444' },
+  { value: '#ef4444', size: 'small' },
+];
+// 与 widgets/src/color_picker.rs 的 PALETTE 一致；选中色 #ef4444 落在第 5 格
+const COLORPICKER2_PRESETS = [{
+  label: '',
+  colors: [
+    '#1f2329', '#8a919f', '#e2e5e9', '#ffffff', '#ef4444', '#f97316', '#f59e0b', '#eab308',
+    '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef',
+    '#ec4899', '#f43f5e', '#78716c', '#0ea5e9', '#10b981', '#8b5a2b', '#64748b', '#0f172a',
+  ],
+}];
+const TOUR_LABELS = ['first', 'middle', 'last', 'single'];
+const TOUR_STEPS = [
+  { title: 'Step 1', description: 'Upload your dataset to get started.' },
+  { title: 'Step 2', description: 'Pick a model and tune the parameters.' },
+  { title: 'Step 3', description: 'Review the report and share it.' },
+];
+const TOUR_CASES = [
+  { current: 0, count: 3 },
+  { current: 1, count: 3 },
+  { current: 2, count: 3 },
+  { current: 0, count: 1 },
+];
+
+const TIMEPICKER_LABELS = ['default', 'small', 'large', 'disabled'];
+const TIMEPICKER_CASES = [
+  { value: dayjs('01:02:03', 'HH:mm:ss') },
+  { value: dayjs('01:02:03', 'HH:mm:ss'), size: 'small' },
+  { value: dayjs('01:02:03', 'HH:mm:ss'), size: 'large' },
+  { value: dayjs('01:02:03', 'HH:mm:ss'), disabled: true },
+];
+const TIMEPICKER2_LABELS = ['selected', 'other'];
+const TIMEPICKER2_CASES = [
+  { value: dayjs('01:02:03', 'HH:mm:ss') },
+  { value: dayjs('12:30:45', 'HH:mm:ss') },
+];
+
+const DATEPICKER_LABELS = ['default', 'small', 'large', 'disabled'];
+const DATEPICKER_CASES = [
+  { value: dayjs('2026-11-16') },
+  { value: dayjs('2026-11-16'), size: 'small' },
+  { value: dayjs('2026-11-16'), size: 'large' },
+  { value: dayjs('2026-11-16'), disabled: true },
+];
+// 与 Rust date_picker::today() 的 UTC 口径一致
+const nowUtc = new Date();
+const TODAY_UTC = `${nowUtc.getUTCFullYear()}-${String(nowUtc.getUTCMonth() + 1).padStart(2, '0')}-${String(nowUtc.getUTCDate()).padStart(2, '0')}`;
+const DATEPICKER2_LABELS = ['selected', 'empty'];
+const DATEPICKER2_CASES = [
+  { value: dayjs(TODAY_UTC) },
+  { value: null },
+];
+
+const RANGE_VALUE = [dayjs('2026-11-10'), dayjs('2026-11-16')];
+const RANGEPICKER_LABELS = ['default', 'small', 'large', 'disabled'];
+const RANGEPICKER_CASES = [
+  { value: RANGE_VALUE },
+  { value: RANGE_VALUE, size: 'small' },
+  { value: RANGE_VALUE, size: 'large' },
+  { value: RANGE_VALUE, disabled: true },
+];
+const RANGEPICKER2_LABELS = ['range'];
+const RANGEPICKER2_CASES = [{ value: RANGE_VALUE }];
+
+const CALENDAR_LABELS = ['month'];
+const CALENDAR2_LABELS = ['year'];
+
+const CAROUSEL_LABELS = ['default', 'second', 'single', '', '', '', '', '', '', '', '', ''];
+const CAROUSEL_CASES = [
+  { initial: 0, count: 3 },
+  { initial: 1, count: 3 },
+  { initial: 0, count: 1 },
+  null,
+];
+function carouselSlides(item) {
+  return Array.from({ length: item.count }, () =>
+    h('div', { style: { height: '160px', background: '#364d79' } }));
+}
+
+// 穿梭框面板：默认 / 勾选 / 含禁用项；listStyle 宽 170 以放进 420 面板（无标签列）
+const TRANSFER_LABELS = ['default', 'checked', 'disabled', '', '', '', '', '', '', '', '', ''];
+const TRANSFER_DATA = [
+  { key: '1', label: 'content 1' },
+  { key: '2', label: 'content 2' },
+  { key: '3', label: 'content 3' },
+  { key: '4', label: 'content 4' },
+];
+const TRANSFER_CASES = [
+  { targetKeys: ['4'] },
+  { targetKeys: ['4'], selectedKeys: ['1', '2'] },
+  { targetKeys: ['4'], disabledKey: '2' },
+  null,
+];
+function transferSource(item) {
+  return TRANSFER_DATA.map((d) => (d.key === item.disabledKey ? { ...d, disabled: true } : d));
+}
+
+function uploadChildren(item) {
+  const kids = [
+    // innerHTML 走 HTML 解析器，svg 才落在 SVG 命名空间；h('svg') 在 div 下会建成 HTML 未知元素而不渲染
+    h('p', {
+      class: 'ant-upload-drag-icon',
+      innerHTML: `<svg class="anticon" viewBox="0 0 1024 1024" fill="currentColor" style="width:48px;height:48px" xmlns="http://www.w3.org/2000/svg"><path d="${INBOX_PATH}"></path></svg>`,
+    }),
+    h('p', { class: 'ant-upload-text' }, () => 'Click to upload'),
+  ];
+  if (item.hint) kids.push(h('p', { class: 'ant-upload-hint' }, () => item.hint));
+  return kids;
+}
+
+const PanelApp = {
+  props: {
+    variant: { required: true },
+    algorithm: { default: 'light' },
+    accent: { default: null },
+    kind: { default: 'input' },
+  },
+  setup(props) {
+    if (props.kind === 'password') {
+      // visible 行：挂载后点一次眼睛图标切到明文（Vue 事件监听响应合成 click）
+      onMounted(() => {
+        nextTick(() => {
+          setTimeout(() => {
+            const icons = document.querySelectorAll('#panel .ant-input-password-icon');
+            if (icons[1]) {
+              icons[1].click();
+              // 切换会把焦点抢进输入框（聚焦环污染截图）：立刻 blur 回 idle 外观
+              const input = icons[1].closest('.ant-input-affix-wrapper').querySelector('input');
+              if (input) input.blur();
+            }
+          }, 50);
+        });
+      });
+    }
+    return () => {
+      const isTag = props.kind === 'tag';
+      const isMenu = props.kind === 'menu';
+      const isTooltip = props.kind === 'tooltip';
+      const isPopover = props.kind === 'popover';
+      const isPopconfirm = props.kind === 'popconfirm';
+      const isPagination = props.kind === 'pagination';
+      const isSwitch = props.kind === 'switch';
+      const isCheckbox = props.kind === 'checkbox';
+      const isRadio = props.kind === 'radio';
+      const isProgress = props.kind === 'progress';
+      const isAvatar = props.kind === 'avatar';
+      const isBadge = props.kind === 'badge';
+      const isBreadcrumb = props.kind === 'breadcrumb';
+      const isSkeleton = props.kind === 'skeleton';
+      const isAlert = props.kind === 'alert';
+      const isCard = props.kind === 'card';
+      const isSteps = props.kind === 'steps';
+      const isTimeline = props.kind === 'timeline';
+      const isSegmented = props.kind === 'segmented';
+      const isTabs = props.kind === 'tabs';
+      const isSlider = props.kind === 'slider';
+      const isLink = props.kind === 'link';
+      const isStatistic = props.kind === 'statistic';
+      const isTypography = props.kind === 'typography';
+      const isDescriptions = props.kind === 'descriptions';
+      const isDivider = props.kind === 'divider';
+      const isSpace = props.kind === 'space';
+      const isResult = props.kind === 'result';
+      const isTree = props.kind === 'tree';
+      const isTable = props.kind === 'table';
+      const isUpload = props.kind === 'upload';
+      const isTransfer = props.kind === 'transfer';
+      const isCarousel = props.kind === 'carousel';
+      const isModal = props.kind === 'modal';
+      const isDrawer = props.kind === 'drawer';
+      const isRating = props.kind === 'rating';
+      const isSpin = props.kind === 'spin';
+      const isEmpty = props.kind === 'empty';
+      const isEmpty2 = props.kind === 'empty2';
+      const isColorPicker = props.kind === 'colorpicker';
+      const isColorPicker2 = props.kind === 'colorpicker2';
+      const isTour = props.kind === 'tour';
+      const isDatePicker = props.kind === 'datepicker';
+      const isDatePicker2 = props.kind === 'datepicker2';
+      const isTimePicker = props.kind === 'timepicker';
+      const isTimePicker2 = props.kind === 'timepicker2';
+      const isRangePicker = props.kind === 'rangepicker';
+      const isRangePicker2 = props.kind === 'rangepicker2';
+      const isCalendar = props.kind === 'calendar';
+      const isCalendar2 = props.kind === 'calendar2';
+      const isNotification = props.kind === 'notification';
+      const isMessage = props.kind === 'message';
+      const isNumberInput = props.kind === 'numberinput';
+      const isPassword = props.kind === 'password';
+      const isSearch = props.kind === 'search';
+      const isCollapse = props.kind === 'collapse';
+      const isAnchor = props.kind === 'anchor';
+      const isForm = props.kind === 'form';
+      const isCascader = props.kind === 'cascader';
+      const isCascader2 = props.kind === 'cascader2';
+      const isTreeSelect = props.kind === 'treeselect';
+      const isTreeSelect2 = props.kind === 'treeselect2';
+      const isFloatButton = props.kind === 'floatbutton';
+      const isSplitter = props.kind === 'splitter';
+      const isLayout = props.kind === 'layout';
+      const isGrid = props.kind === 'grid';
+      const isNavMenu = props.kind === 'navmenu';
+      const isCountdown = props.kind === 'countdown';
+      const isKbd = props.kind === 'kbd';
+      const isScrollbar = props.kind === 'scrollbar';
+      const isOverlay = isMenu || isTooltip || isPopover || isPopconfirm;
+      const cell = isTag ? 120 : isDatePicker2 ? 300 : isRangePicker2 ? 576 : isCalendar || isCalendar2 ? 760 : isNotification ? 384 : PANEL.cell;
+      const rows = isKbd
+        ? KBD_LABELS
+        : isScrollbar
+          ? SCROLLBAR_LABELS
+          : isNavMenu
+        ? NAVMENU_LABELS
+        : isCountdown
+          ? COUNTDOWN_LABELS
+          : isLayout
+        ? LAYOUT_LABELS
+        : isGrid
+          ? GRID_LABELS
+          : isFloatButton
+        ? FLOATBUTTON_LABELS
+        : isSplitter
+          ? SPLITTER_LABELS
+          : isCascader
+        ? CASCADER_LABELS
+        : isCascader2
+          ? CASCADER2_LABELS
+          : isTreeSelect
+            ? TREESELECT_LABELS
+            : isTreeSelect2
+              ? TREESELECT2_LABELS
+              : isCollapse
+        ? COLLAPSE_LABELS
+        : isAnchor
+          ? ANCHOR_LABELS
+          : isForm
+            ? FORM_LABELS
+            : isTag
+        ? TAG_ROWS
+        : isSwitch
+          ? SWITCH_LABELS
+          : isCheckbox
+            ? CHECKBOX_LABELS
+            : isRadio
+              ? RADIO_LABELS
+              : isProgress
+                ? PROGRESS_LABELS
+                : isAvatar
+                  ? AVATAR_LABELS
+                  : isBadge
+                    ? BADGE_LABELS
+                    : isBreadcrumb
+                      ? BREADCRUMB_LABELS
+                      : isSkeleton
+                        ? SKELETON_LABELS
+                        : isAlert
+                          ? ALERT_LABELS
+                          : isCard
+                            ? CARD_LABELS
+                            : isSteps
+                              ? STEPS_LABELS
+                              : isTimeline
+                                ? TIMELINE_LABELS
+                                : isSegmented
+                                  ? SEGMENTED_LABELS
+                                  : isTabs
+                                    ? TABS_LABELS
+                                    : isSlider
+                                      ? SLIDER_LABELS
+                                      : isLink
+                                        ? LINK_LABELS
+                                        : isStatistic
+                                          ? STATISTIC_LABELS
+                                          : isTypography
+                                            ? TYPOGRAPHY_LABELS
+                                            : isDescriptions
+                                              ? DESCRIPTIONS_LABELS
+                                              : isResult
+                                                ? RESULT_LABELS
+                                              : isTree
+                                                ? TREE_LABELS
+                                              : isTable
+                                                ? TABLE_LABELS
+                                              : isUpload
+                                                ? UPLOAD_LABELS
+                                              : isTransfer
+                                                ? TRANSFER_LABELS
+                                              : isCarousel
+                                                ? CAROUSEL_LABELS
+                                              : isModal
+                                                ? MODAL_LABELS
+                                              : isDrawer
+                                                ? DRAWER_LABELS
+                                              : isRating
+                                                ? RATING_LABELS
+                                              : isSpin
+                                                ? SPIN_LABELS
+                                              : isEmpty
+                                                ? EMPTY_LABELS
+                                              : isEmpty2
+                                                ? EMPTY2_LABELS
+                                              : isColorPicker
+                                                ? COLORPICKER_LABELS
+                                              : isColorPicker2
+                                                ? COLORPICKER2_LABELS
+                                              : isTour
+                                                ? TOUR_LABELS
+                                              : isTimePicker
+                                                ? TIMEPICKER_LABELS
+                                              : isTimePicker2
+                                                ? TIMEPICKER2_LABELS
+                                              : isDatePicker
+                                                ? DATEPICKER_LABELS
+                                              : isDatePicker2
+                                                ? DATEPICKER2_LABELS
+                                              : isRangePicker
+                                                ? RANGEPICKER_LABELS
+                                              : isRangePicker2
+                                                ? RANGEPICKER2_LABELS
+                                              : isCalendar
+                                                ? CALENDAR_LABELS
+                                              : isCalendar2
+                                                ? CALENDAR2_LABELS
+                                              : isPopconfirm
+                                                ? POPCONFIRM_LABELS
+                                              : isNotification
+                                                ? NOTIFICATION_LABELS
+                                              : isMessage
+                                                ? MESSAGE_LABELS
+                                              : isDivider
+                                                ? DIVIDER_LABELS
+                                                : isSpace
+                                                  ? SPACE_LABELS
+                                                  : isNumberInput
+                                                    ? NUMBERINPUT_LABELS
+                                                    : isPassword
+                                                      ? PASSWORD_LABELS
+                                                      : isSearch
+                                                        ? SEARCH_LABELS
+                                                        : PANEL_ROWS;
+      return h(
+        ConfigProvider,
+        {
+          theme: {
+            algorithm: props.algorithm === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+            token: props.accent ? { colorPrimary: props.accent } : {},
+            ...(isNumberInput ? { components: { InputNumber: { handleVisible: true } } } : {}),
+          },
+        },
+        () =>
+          h(
+            'div',
+            {
+              id: 'panel',
+              style: {
+                width: `${isCascader2 ? 560 : isTour ? 560 : isDatePicker2 ? 480 : isRangePicker2 ? 756 : isCalendar || isCalendar2 ? 792 : isNotification ? 416 : PANEL.width}px`,
+                boxSizing: 'border-box',
+                padding: `${PANEL.pad}px`,
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: `${PANEL.rowGap}px`,
+              },
+            },
+            [
+              ...rows.map((row, index) => {
+              const label = isSwitch || isCheckbox || isRadio || isProgress || isAvatar || isBadge || isBreadcrumb || isSkeleton || isAlert || isCard || isSteps || isTimeline || isSegmented || isTabs || isSlider || isLink || isStatistic || isTypography || isDescriptions || isDivider || isSpace || isResult || isTree || isTable || isUpload || isTransfer || isCarousel || isModal || isDrawer || isRating || isSpin || isEmpty || isEmpty2 || isColorPicker || isColorPicker2 || isTour || isDatePicker || isDatePicker2 || isTimePicker || isTimePicker2 || isRangePicker || isRangePicker2 || isCalendar || isCalendar2 || isPopconfirm || isNotification || isMessage || isNumberInput || isPassword || isSearch || isCollapse || isAnchor || isForm || isCascader || isCascader2 || isTreeSelect || isTreeSelect2 || isFloatButton || isSplitter || isLayout || isGrid || isNavMenu || isCountdown || isKbd || isScrollbar ? row : row[0];
+              let content;
+              if (isSwitch) {
+                const item = SWITCH_CASES[index];
+                content = item
+                  ? h(Switch, item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isCheckbox) {
+                const item = CHECKBOX_CASES[index];
+                const { children, ...rest } = item || {};
+                content = item
+                  ? h(Checkbox, rest, children ? () => children : undefined)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isRadio) {
+                const item = RADIO_CASES[index];
+                const { children, ...rest } = item || {};
+                content = item
+                  ? h(Radio, rest, children ? () => children : undefined)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isSteps) {
+                const item = STEPS_CASES[index];
+                content = item
+                  ? h(Steps, { responsive: false, ...item, style: { width: `${cell}px` } })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTimeline) {
+                const item = TIMELINE_CASES[index];
+                content = item
+                  ? h(Timeline, { ...item, style: { width: `${cell}px` } })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isSegmented) {
+                const item = SEGMENTED_CASES[index];
+                content = item
+                  ? h(Segmented, {
+                      ...item,
+                      style: item.block ? { width: `${cell}px` } : undefined,
+                    })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTabs) {
+                const item = TABS_CASES[index];
+                content = item
+                  ? h(Tabs, { ...item, style: { width: `${cell}px` } })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isStatistic) {
+                const item = STATISTIC_CASES[index];
+                content = item
+                  ? h(Statistic, { ...item, style: { width: `${cell}px` } })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isLink) {
+                const item = LINK_CASES[index];
+                const { children, ...rest } = item || {};
+                content = item
+                  ? h(Typography.Link, rest, () => children)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isSlider) {
+                const item = SLIDER_CASES[index];
+                content = item
+                  ? h(Slider, {
+                      min: 0,
+                      max: 100,
+                      ...item,
+                      style: { width: `${cell}px` },
+                    })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTimePicker) {
+                const item = TIMEPICKER_CASES[index];
+                content = h(TimePicker, { ...item, style: { width: `${cell}px` } });
+              } else if (isTimePicker2) {
+                const item = TIMEPICKER2_CASES[index];
+                content = h(TimePicker, {
+                  ...item,
+                  open: true,
+                  autoAdjustOverflow: false,
+                  getPopupContainer: () => document.getElementById('panel'),
+                  style: { width: `${cell}px` },
+                });
+              } else if (isDatePicker) {
+                const item = DATEPICKER_CASES[index];
+                content = h(DatePicker, { ...item, style: { width: `${cell}px` } });
+              } else if (isDatePicker2) {
+                const item = DATEPICKER2_CASES[index];
+                content = h(DatePicker, {
+                  ...item,
+                  open: true,
+                  autoAdjustOverflow: false,
+                  getPopupContainer: () => document.getElementById('panel'),
+                  style: { width: `${cell}px` },
+                });
+              } else if (isRangePicker) {
+                const item = RANGEPICKER_CASES[index];
+                content = h(DatePicker.RangePicker, { ...item, style: { width: `${cell}px` } });
+              } else if (isRangePicker2) {
+                const item = RANGEPICKER2_CASES[index];
+                content = h(DatePicker.RangePicker, {
+                  ...item,
+                  open: true,
+                  autoAdjustOverflow: false,
+                  getPopupContainer: () => document.getElementById('panel'),
+                  style: { width: `${cell}px` },
+                });
+              } else if (isCalendar || isCalendar2) {
+                // 固定在过去（2025-11-10 周一）：当天标记不随系统日期漂移，基线可长期复现
+                content = h(Calendar, {
+                  value: dayjs('2025-11-10'),
+                  mode: isCalendar2 ? 'year' : 'month',
+                  fullscreen: true,
+                  style: { width: `${cell}px` },
+                });
+              } else if (isUpload) {
+                const item = UPLOAD_CASES[index];
+                content = item
+                  ? h(UploadDragger, { disabled: item.disabled }, () => uploadChildren(item))
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTransfer) {
+                const item = TRANSFER_CASES[index];
+                content = item
+                  ? h(Transfer, {
+                      dataSource: transferSource(item),
+                      targetKeys: item.targetKeys,
+                      selectedKeys: item.selectedKeys || [],
+                      titles: ['Source', 'Target'],
+                      render: (row) => row.label,
+                      listStyle: { width: '170px', height: '200px' },
+                    })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isCarousel) {
+                const item = CAROUSEL_CASES[index];
+                content = item
+                  ? h(Carousel, { arrows: true, initialSlide: item.initial, style: { width: `${cell}px` } }, () => carouselSlides(item))
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isModal) {
+                const item = MODAL_CASES[index];
+                content = item
+                  ? h('div', { style: { position: 'relative', width: `${PANEL.width - 2 * PANEL.pad}px`, height: '200px', overflow: 'hidden' } }, () => [
+                      h(Modal, {
+                        open: true,
+                        getContainer: false,
+                        width: item.width || 320,
+                        closable: item.closable !== false,
+                        footer: item.footer === false ? null : undefined,
+                        title: 'Basic Modal',
+                      }, () => h('div', 'Some contents...')),
+                    ])
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isDrawer) {
+                const item = DRAWER_CASES[index];
+                if (!item) {
+                  content = h('div', { style: { width: `${cell}px`, height: '0px' } });
+                } else {
+                  const slots = { default: () => h('div', 'Some contents...') };
+                  if (item.footer !== false) {
+                    slots.footer = () => [h(Button, 'Cancel'), h(Button, { type: 'primary' }, 'OK')];
+                  }
+                  content = h('div', { style: { position: 'relative', width: `${PANEL.width - 2 * PANEL.pad}px`, height: '200px', overflow: 'hidden' } }, () => [
+                    h(Drawer, {
+                      open: true,
+                      getContainer: false,
+                      placement: 'right',
+                      closable: item.closable !== false,
+                      title: 'Basic Drawer',
+                    }, slots),
+                  ]);
+                }
+              } else if (isRating) {
+                const item = RATING_CASES[index];
+                content = item
+                  ? h(Rate, item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isSpin) {
+                const item = SPIN_CASES[index];
+                content = item
+                  ? h(Spin, item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isEmpty || isEmpty2) {
+                const item = (isEmpty ? EMPTY_CASES : EMPTY2_CASES)[index];
+                if (!item) {
+                  content = h('div', { style: { width: `${cell}px`, height: '0px' } });
+                } else {
+                  const { footer, ...rest } = item;
+                  // 该实现的 footer 走默认插槽（不是 footer 插槽）
+                  const slots = footer ? { default: () => h(Button, { type: 'primary' }, 'Create Now') } : undefined;
+                  // 普通元素不支持函数式 children（会被静默丢弃），必须传 vnode 数组
+                  content = h('div', { style: { width: `${cell}px` } }, [h(Empty, rest, slots)]);
+                }
+              } else if (isColorPicker) {
+                const item = COLORPICKER_CASES[index];
+                content = item
+                  ? h(ColorPicker, { ...item, arrow: false })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isColorPicker2) {
+                const item = COLORPICKER2_CASES[index];
+                content = item
+                  ? h(ColorPicker, {
+                      ...item,
+                      open: true,
+                      arrow: false,
+                      presets: COLORPICKER2_PRESETS,
+                      autoAdjustOverflow: false,
+                      getPopupContainer: () => document.getElementById('panel'),
+                      // Rust 侧浮层只实现预设色板：panelRender 只保留 Presets，
+                      // 折叠头/体内边距由 CSS 钉掉（见 #panel 预设钉住规则）；
+                      // panelRender 绕过 inner-content 的 colorPickerWidth(组件常量 234)，这里补回
+                      panelRender: ({ extra }) => h('div', { style: { width: '234px' } }, [h(extra.components.Presets)]),
+                    })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTour) {
+                const item = TOUR_CASES[index];
+                content = item
+                  ? h('div', { class: 'tour-box', style: { position: 'relative', width: `${560 - 2 * PANEL.pad}px`, height: '180px', overflow: 'hidden' } }, () => [
+                      h(Tour, {
+                        open: true,
+                        current: item.current,
+                        steps: TOUR_STEPS.slice(0, item.count),
+                        // false = inline 模式（@v-c/tour Tour.js:25）；传函数会 portal 到 body
+                        getPopupContainer: false,
+                      }),
+                    ])
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTable) {
+                const item = TABLE_CASES[index];
+                content = item
+                  ? h(Table, item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTree) {
+                const item = TREE_CASES[index];
+                content = item
+                  ? h(Tree, item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isResult) {
+                const item = RESULT_CASES[index];
+                content = item
+                  ? h(Result, { status: item.status }, { title: () => item.title })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isSpace) {
+                const item = SPACE_CASES[index];
+                content = item
+                  ? h(Space, { size: item.size, direction: item.direction }, () => [
+                      h(Button, { size: 'small' }, () => 'A'),
+                      h(Button, { size: 'small' }, () => 'B'),
+                      h(Button, { size: 'small' }, () => 'C'),
+                    ])
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isDivider) {
+                const item = DIVIDER_CASES[index];
+                if (!item) {
+                  content = h('div', { style: { width: `${cell}px`, height: '0px' } });
+                } else {
+                  const { children, ...rest } = item;
+                  // antd Divider 是 min-width:100% 的 flex 子项，直接放进整行会撑满整行；
+                  // 用与 Rust 面板一致的 240px 容器限定宽度
+                  content = h(
+                    'div',
+                    { style: { width: `${cell}px`, flex: '0 0 auto' } },
+                    [h(Divider, rest, children ? () => children : undefined)],
+                  );
+                }
+              } else if (isDescriptions) {
+                const item = DESCRIPTIONS_CASES[index];
+                content = item
+                  ? h(Descriptions, { ...item, style: { width: `${cell}px` } })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTypography) {
+                const item = TYPOGRAPHY_CASES[index];
+                if (!item) {
+                  content = h('div', { style: { width: `${cell}px`, height: '0px' } });
+                } else if (item.kind === 'title') {
+                  const { kind, children, ...rest } = item;
+                  content = h(Typography.Title, rest, () => children);
+                } else {
+                  const { kind, children, ...rest } = item;
+                  content = h(Typography.Text, rest, () => children);
+                }
+              } else if (isCard) {
+                const item = CARD_CASES[index];
+                content = item
+                  ? cardContent(item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isAlert) {
+                const item = ALERT_CASES[index];
+                content = item
+                  ? h(Alert, { ...item, style: { width: `${cell}px` } })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isSkeleton) {
+                const item = SKELETON_CASES[index];
+                if (!item) {
+                  content = h('div', { style: { width: `${cell}px`, height: '0px' } });
+                } else if (item.type === 'avatar') {
+                  content = h(Skeleton, {
+                    avatar: { size: item.size },
+                    title: false,
+                    paragraph: false,
+                    style: { width: `${cell}px` },
+                  });
+                } else if (item.type === 'button') {
+                  content = h(Skeleton.Button, { active: false });
+                } else if (item.type === 'input') {
+                  content = h(Skeleton.Input, { active: false });
+                } else {
+                  content = h(Skeleton, {
+                    title: false,
+                    paragraph: { rows: item.rows, width: item.width },
+                    style: { width: `${cell}px` },
+                  });
+                }
+              } else if (isBreadcrumb) {
+                const item = BREADCRUMB_CASES[index];
+                content = item
+                  ? h(Breadcrumb, item)
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isBadge) {
+                const item = BADGE_CASES[index];
+                content = item
+                  ? h(Badge, item, () => h(Avatar, { size: 'small' }, () => 'A'))
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isAvatar) {
+                const item = AVATAR_CASES[index];
+                content = item
+                  ? h(Avatar, item, () => 'A')
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isProgress) {
+                const item = PROGRESS_CASES[index];
+                content = item
+                  ? h(Progress, {
+                      ...item,
+                      style: item.steps ? undefined : { width: `${cell}px` },
+                    })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isPagination) {
+                const current = PAGINATION_CASES[index];
+                content = current
+                  ? h(Pagination, {
+                      current: current.current,
+                      total: current.total,
+                      size: current.size,
+                      showSizeChanger: false,
+                    })
+                  : h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isNotification) {
+                content = h(NotificationPurePanel, NOTIFICATION_CASES[index]);
+              } else if (isMessage) {
+                // 上游 Message PurePanel 漏渲染 PurePanelStyle，且 pure-panel 类与 notice 同元素
+                // 导致后代选择器失配：补挂子样式组件并外套一层 pure-panel 钩子 div
+                content = [
+                  h(MessagePurePanelStyle, { prefixCls: 'ant-message' }),
+                  h(
+                    'div',
+                    { class: 'ant-message-notice-pure-panel' },
+                    h(MessagePurePanel, MESSAGE_CASES[index]),
+                  ),
+                ];
+              } else if (isNumberInput) {
+                content = h(InputNumber, NUMBERINPUT_CASES[index]);
+              } else if (isPassword) {
+                content = h(InputPassword, PASSWORD_CASES[index]);
+              } else if (isSearch) {
+                content = h(Input, { ...SEARCH_CASES[index], prefix: searchPrefix() });
+              } else if (isCollapse) {
+                content = collapseCase(index, cell);
+              } else if (isAnchor) {
+                content = anchorCase(index, cell);
+              } else if (isForm) {
+                content = formCase(index, cell);
+              } else if (isNavMenu) {
+                content = h(Menu, {
+                  mode: 'inline',
+                  style: { width: `${cell}px` },
+                  items: NAVMENU_ITEMS[index],
+                  ...NAVMENU_PROPS[index],
+                });
+              } else if (isCountdown) {
+                content = h(StatisticTimer, {
+                  type: 'countdown',
+                  value: Date.now() + COUNTDOWN_OFFSETS[index] * 1000,
+                  format: COUNTDOWN_FORMATS[index],
+                  ...(index === 0 ? { title: '距结束' } : {}),
+                });
+              } else if (isKbd) {
+                const parts = [];
+                KBD_KEYS[index].forEach((key, i) => {
+                  if (i) parts.push(h('span', {}, '+'));
+                  parts.push(h(Typography.Text, { keyboard: true }, () => key));
+                });
+                content = h('div', { style: { display: 'flex', alignItems: 'center' } }, parts);
+              } else if (isScrollbar) {
+                content = h('div', { class: 'sb-shot', style: { width: `${cell}px` } }, [
+                  h(Table, {
+                    virtual: true,
+                    columns: [{ title: 'Name', dataIndex: 'name', key: 'name', width: cell - 8 }],
+                    dataSource: Array.from({ length: 30 }, (_, i) => ({ key: i, name: `row ${i}` })),
+                    scroll: { x: cell - 8, y: 120 },
+                    pagination: false,
+                  }),
+                ]);
+              } else if (isLayout) {
+                content = h(
+                  Layout,
+                  { style: { width: `${cell}px`, height: '200px' } },
+                  () => [
+                    h(LayoutHeader, {}, () => 'Header'),
+                    h(Layout, { hasSider: true }, () => [
+                      h(
+                        LayoutSider,
+                        { width: 80, ...(index === 1 ? { theme: 'light' } : {}) },
+                        () => 'Sider',
+                      ),
+                      h(LayoutContent, {}, () => 'Content'),
+                    ]),
+                    h(LayoutFooter, {}, () => 'Footer'),
+                  ],
+                );
+              } else if (isGrid) {
+                const gridCell = (text) =>
+                  h(
+                    'div',
+                    {
+                      style: {
+                        background: '#1677ff',
+                        color: '#fff',
+                        height: '40px',
+                        lineHeight: '40px',
+                        textAlign: 'center',
+                      },
+                    },
+                    text,
+                  );
+                const gridRow =
+                  index === 0
+                    ? h(Row, { gutter: 16 }, () => [
+                        h(Col, { span: 12 }, () => gridCell('12')),
+                        h(Col, { span: 12 }, () => gridCell('12')),
+                      ])
+                    : index === 1
+                      ? h(Row, { gutter: 16 }, () => [
+                          h(Col, { span: 8 }, () => gridCell('8')),
+                          h(Col, { span: 8 }, () => gridCell('8')),
+                          h(Col, { span: 8 }, () => gridCell('8')),
+                        ])
+                      : h(Row, {}, () => [
+                          h(Col, { span: 12, offset: 6 }, () => gridCell('12 offset 6')),
+                        ]);
+                content = h('div', { style: { width: `${cell}px` } }, [gridRow]);
+              } else if (isFloatButton) {
+                content = h(
+                  'div',
+                  { style: { position: 'relative', width: `${cell}px`, height: '96px' } },
+                  [h(FloatButton, { icon: () => '↑', ...FLOATBUTTON_CASES[index] })],
+                );
+              } else if (isSplitter) {
+                content = h(
+                  Splitter,
+                  { vertical: index === 1, style: { width: `${cell}px`, height: '120px' } },
+                  () => [
+                    h(SplitterPanel, { defaultSize: '50%' }, () =>
+                      h('div', { style: { padding: '8px' } }, 'First'),
+                    ),
+                    h(SplitterPanel, { defaultSize: '50%' }, () =>
+                      h('div', { style: { padding: '8px' } }, 'Second'),
+                    ),
+                  ],
+                );
+              } else if (isCascader) {
+                content = h(Cascader, { options: CASCADER_DATA, ...CASCADER_CASES[index] });
+              } else if (isCascader2) {
+                content = h(Cascader, {
+                  options: CASCADER_DATA,
+                  open: true,
+                  autoAdjustOverflow: false,
+                  getPopupContainer: () => document.getElementById('panel'),
+                  ...CASCADER2_CASES[index],
+                });
+              } else if (isTreeSelect) {
+                content = h(TreeSelect, {
+                  treeData: TREESELECT_DATA,
+                  placeholder: 'Please select',
+                  style: { width: `${cell}px` },
+                  ...TREESELECT_CASES[index],
+                });
+              } else if (isTreeSelect2) {
+                content = h(TreeSelect, {
+                  treeData: TREESELECT_DATA,
+                  placeholder: 'Please select',
+                  open: true,
+                  autoAdjustOverflow: false,
+                  getPopupContainer: () => document.getElementById('panel'),
+                  style: { width: `${cell}px` },
+                  ...TREESELECT2_CASES[index],
+                });
+              } else if (isOverlay) {
+                content = h('div', { style: { width: `${cell}px`, height: '0px' } });
+              } else if (isTag) {
+                content = h(
+                  Tag,
+                  { variant: 'outlined', ...row[1], style: { width: `${cell}px` } },
+                  () => 'Tag',
+                );
+              } else {
+                const [, status, size, extra] = row;
+                if (props.kind === 'multi') {
+                  content = h(Select, {
+                    mode: 'multiple',
+                    variant: props.variant,
+                    status: status === 'default' ? undefined : status,
+                    size,
+                    open: false,
+                    value: ['a', 'b'],
+                    options: [
+                      { value: 'a', label: '选项一' },
+                      { value: 'b', label: '选项二' },
+                    ],
+                    style: { width: `${cell}px` },
+                    ...extra,
+                  });
+                } else if (props.kind === 'select') {
+                  content = h(Select, {
+                    variant: props.variant,
+                    status: status === 'default' ? undefined : status,
+                    size,
+                    open: false,
+                    value: 'v',
+                    options: [{ value: 'v', label: '选中项' }],
+                    style: { width: `${cell}px` },
+                    ...extra,
+                  });
+                } else {
+                  content = h(props.kind === 'textarea' ? TextArea : Input, {
+                    variant: props.variant,
+                    status: status === 'default' ? undefined : status,
+                    size,
+                    placeholder: '',
+                    style: {
+                      width: `${cell}px`,
+                      ...(props.kind === 'textarea' ? { height: `${PANEL.rowH}px` } : {}),
+                    },
+                    ...extra,
+                  });
+                }
+              }
+              return h(
+                'div',
+                {
+                  style: {
+                    height: `${isScrollbar ? 120 : isNavMenu ? 144 : isCountdown ? 72 : isLayout ? 200 : isFloatButton ? 96 : isSplitter ? 120 : isCascader2 ? 240 : isTreeSelect2 ? 180 : isCollapse ? 140 : isAnchor ? 150 : isForm ? 100 : isSteps || isTimeline ? 120 : isCard ? 200 : isTabs ? 64 : isSlider ? 64 : isSpin ? 64 : isEmpty || isEmpty2 || isColorPicker2 ? 180 : isDatePicker2 ? 396 : isRangePicker2 ? 396 : isCalendar ? 790 : isCalendar2 ? 536 : isPopconfirm ? 160 : isNotification ? 160 : isTimePicker2 ? 320 : isTour ? 180 : isStatistic ? 96 : isTypography ? 72 : isDescriptions ? 216 : isDivider ? 60 : isSpace ? 120 : isResult ? 240 : isTree ? 120 : isTable ? 232 : isUpload ? 160 : isTransfer || isModal || isDrawer ? 200 : isCarousel ? 160 : PANEL.rowH}px`,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: `${isTransfer || isModal || isDrawer || isTour || isCalendar || isCalendar2 || isNotification ? 0 : PANEL.gap}px`,
+                  },
+                },
+                [
+                  h(
+                    'span',
+                    { class: 'panel-label', style: { width: `${isTransfer || isModal || isDrawer || isTour || isCalendar || isCalendar2 || isNotification ? 0 : PANEL.label}px`, flex: 'none', fontSize: '12px' } },
+                    isTransfer || isModal || isDrawer || isTour || isCalendar || isCalendar2 || isNotification ? '' : label,
+                  ),
+                  content,
+                ],
+              );
+            }),
+              ...(isMenu ? [menuOverlay(cell)] : []),
+              ...(isTooltip ? [tooltipOverlay(cell)] : []),
+              ...(isPopover ? [popoverOverlay(cell)] : []),
+              ...(isPopconfirm ? POPCONFIRM_LABELS.map((_, i) => popconfirmOverlay(cell, i)) : []),
+            ],
+          ),
+      );
+    };
+  },
+};
+
+/// 面板底色与标签色取当前主题的别名令牌，避免把 #fff / #141414 写死在参照页里
+const applyPanelTokens = () => {
+  const el = document.querySelector(
+    '#panel .ant-input, #panel .ant-menu, #panel .ant-cascader, #panel .ant-tree-select, #panel .ant-float-btn, #panel .ant-splitter, #panel .ant-tag, #panel .ant-select, #panel .ant-switch, #panel .ant-checkbox-wrapper, #panel .ant-radio-wrapper, #panel .ant-progress, #panel .ant-avatar, #panel .ant-badge, #panel .ant-breadcrumb, #panel .ant-skeleton, #panel .ant-alert, #panel .ant-card, #panel .ant-steps, #panel .ant-timeline, #panel .ant-segmented, #panel .ant-tabs, #panel .ant-slider, #panel .ant-typography-link, #panel .ant-typography, #panel .ant-statistic, #panel .sb-shot .ant-table-wrapper, #panel .ant-descriptions, #panel .ant-divider, #panel .ant-space, #panel .ant-result, #panel .ant-tree, #panel .ant-table-wrapper, #panel .ant-upload-wrapper, #panel .ant-transfer, #panel .ant-carousel, #panel .ant-modal, #panel .ant-drawer, #panel .ant-color-picker, #panel .ant-tour, #panel .ant-picker, #panel .ant-picker-dropdown, #panel .ant-picker-time-panel-column, .ant-dropdown-menu, .ant-tooltip-container, .ant-popover-container, .ant-pagination, .ant-notification-notice-pure-panel, .ant-message-notice-pure-panel',
+  );
+  if (new URLSearchParams(location.search).get('kind') === 'timepicker2') {
+    document.querySelectorAll('#panel .ant-picker-time-panel-column').forEach((c) => { c.scrollTop = 0; });
+  }
+  const cs = getComputedStyle(el || document.body);
+  const read = (name) => cs.getPropertyValue(`--ant-${name}`).trim();
+  const panel = document.getElementById('panel');
+  panel.style.background = read('color-bg-container');
+  document.querySelectorAll('#panel .panel-label').forEach((node) => {
+    node.style.color = read('color-text-tertiary');
+  });
+  document.body.style.background = panel.style.background;
+  return new Promise((r) => requestAnimationFrame(() => setTimeout(r, 60)));
+};
+
+window.__panel = (variant, algorithm, accent, kind) =>
+  remount(PanelApp, { variant, algorithm, accent, kind: kind || 'input' }).then(applyPanelTokens);
+
+// 无头浏览器截图入口：?panel=outlined&appearance=light&accent=8b5cf6&kind=textarea
+// 无参数时保持原来的矩阵模式，供 computed style 采集脚本使用。
+const query = new URLSearchParams(location.search);
+const queryAccent = query.get('accent');
+const queryKind = query.get('kind') || 'input';
+window.__ready = query.get('panel')
+  ? window.__panel(
+      query.get('panel'),
+      query.get('appearance') || 'light',
+      queryAccent ? `#${queryAccent}` : null,
+      queryKind,
+    )
+  : window.__matrix(
+      query.get('appearance') || 'light',
+      queryAccent ? `#${queryAccent}` : null,
+      queryKind,
+    );
+</script>
+</body>
+</html>

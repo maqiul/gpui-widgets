@@ -1,0 +1,17 @@
+# build artifacts
+/target/
+build_*.log
+
+# scratch / backups / upstream reference copy
+/.agents/
+/.ref/
+patch.py
+
+# harness scratch output (probe pages, logs, current shots)
+harness/__pycache__/
+harness/_*
+harness/shots/
+harness/antd_shots/
+harness/legacy/
+harness/vendor/
+node_modules

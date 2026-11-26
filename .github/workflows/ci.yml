@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Linux（x11）编译门：GPUI 的 Linux 后端要一批原生 C 库，缺了会在 build script 阶段挂。
+  # 只 check/doc 不链接，故无需 Mesa/Vulkan 运行库。
+  linux-x11:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install GPUI Linux native deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libfreetype6-dev libfontconfig1-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - name: cargo check (all targets)
+        run: cargo check --all-targets
+      - name: cargo doc (docs.rs 同口径 lib 文档门)
+        run: cargo doc --no-deps
+      - name: cargo test (lib)
+        run: cargo test --lib
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo check (all targets)
+        run: cargo check --all-targets
+      - name: cargo test (lib)
+        run: cargo test --lib

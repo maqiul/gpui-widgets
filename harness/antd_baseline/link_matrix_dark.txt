@@ -1,0 +1,4 @@
+normal|#1668dc|0
+hover|#15417e|1
+active|#1554ad|1
+disabled|rgba(255,255,255,0.25)|0
