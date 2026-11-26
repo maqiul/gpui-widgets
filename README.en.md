@@ -189,7 +189,7 @@ See the complete integration documentation at [`docs/integration-guide.en.md`](d
 
 ```toml
 [dependencies]
-gpui-widgets = "0.2"   # crates.io release
+gpui-widgets = "0.3"   # crates.io release
 # gpui-pre's library name is still gpui; it cannot be mixed with the official gpui 0.2.2,
 # so downstream projects must switch over entirely
 gpui = { package = "gpui-pre", version = "=0.3.14" }

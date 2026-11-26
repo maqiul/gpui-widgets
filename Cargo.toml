@@ -1,6 +1,6 @@
 [package]
 name = "gpui-widgets"
-version = "0.2.6"
+version = "0.3.0"
 edition = "2024"
 description = "General-purpose widgets built on GPUI (Zed's GPU-accelerated UI framework)"
 license = "Apache-2.0"

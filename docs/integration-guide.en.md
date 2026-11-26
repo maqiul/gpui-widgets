@@ -17,7 +17,7 @@ The `widgets/` directory is an **independent crate** (`gpui-widgets`). It depend
 # so downstream projects must switch over entirely
 gpui = { package = "gpui-pre", version = "=0.3.14" }
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.14" }
-gpui-widgets = "0.2"
+gpui-widgets = "0.3"
 ```
 
 ### Local Development Mode (Development Only)

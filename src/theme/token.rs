@@ -426,12 +426,8 @@ const ERROR_BG_ACTIVE: usize = 2;
 /// 由种子 + 明暗形态派生全部别名令牌。
 pub fn derive(seed: &Seed, appearance: Appearance) -> Tokens {
     let dark = appearance == Appearance::Dark;
-    let bg_base =
-        seed.color_bg_base
-            .unwrap_or(Color::from_hex(if dark { 0x000000 } else { 0xffffff }));
-    let text_base =
-        seed.color_text_base
-            .unwrap_or(Color::from_hex(if dark { 0xffffff } else { 0x000000 }));
+    let bg_base = seed.color_bg_base.unwrap_or(Color::from_hex(if dark { 0x000000 } else { 0xffffff }));
+    let text_base = seed.color_text_base.unwrap_or(Color::from_hex(if dark { 0xffffff } else { 0x000000 }));
     let shadow_base = if dark {
         Color::from_hex(0xffffff).with_alpha(0.2)
     } else {
@@ -464,16 +460,8 @@ pub fn derive(seed: &Seed, appearance: Appearance) -> Tokens {
     };
 
     let (
-        primary_bg,
-        primary_bg_hover,
-        primary_border,
-        primary_border_hover,
-        primary_hover,
-        primary_color,
-        primary_active,
-        primary_text,
-        primary_text_hover,
-        primary_text_active,
+        primary_bg, primary_bg_hover, primary_border, primary_border_hover, primary_hover, primary_color,
+        primary_active, primary_text, primary_text_hover, primary_text_active,
     ) = pick(&primary, &FAMILY_HARD);
     // 深色下 antd 用描边档当染底档（themes/dark/index.js 末尾的两行覆盖）
     let (primary_bg, primary_bg_hover) = if dark {
@@ -483,52 +471,20 @@ pub fn derive(seed: &Seed, appearance: Appearance) -> Tokens {
     };
 
     let (
-        success_bg,
-        success_bg_hover,
-        success_border,
-        success_border_hover,
-        success_hover,
-        success_color,
-        success_active,
-        success_text,
-        success_text_hover,
-        success_text_active,
+        success_bg, success_bg_hover, success_border, success_border_hover, success_hover, success_color,
+        success_active, success_text, success_text_hover, success_text_active,
     ) = pick(&success, &FAMILY_SOFT);
     let (
-        warning_bg,
-        warning_bg_hover,
-        warning_border,
-        warning_border_hover,
-        warning_hover,
-        warning_color,
-        warning_active,
-        warning_text,
-        warning_text_hover,
-        warning_text_active,
+        warning_bg, warning_bg_hover, warning_border, warning_border_hover, warning_hover, warning_color,
+        warning_active, warning_text, warning_text_hover, warning_text_active,
     ) = pick(&warning, &FAMILY_SOFT);
     let (
-        info_bg,
-        info_bg_hover,
-        info_border,
-        info_border_hover,
-        info_hover,
-        info_color,
-        info_active,
-        info_text,
-        info_text_hover,
-        info_text_active,
+        info_bg, info_bg_hover, info_border, info_border_hover, info_hover, info_color, info_active, info_text,
+        info_text_hover, info_text_active,
     ) = pick(&info, &FAMILY_SOFT);
     let (
-        error_bg,
-        error_bg_hover,
-        error_border,
-        error_border_hover,
-        error_hover,
-        error_color,
-        error_active,
-        error_text,
-        error_text_hover,
-        error_text_active,
+        error_bg, error_bg_hover, error_border, error_border_hover, error_hover, error_color, error_active,
+        error_text, error_text_hover, error_text_active,
     ) = pick(&error, &FAMILY_HARD);
     let error_bg_active = error[ERROR_BG_ACTIVE];
     let error_bg_filled_hover = error_bg_filled_hover(&error);

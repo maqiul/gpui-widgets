@@ -16,7 +16,7 @@
 # gpui-pre 的库名仍是 gpui；与官方 gpui 0.2.2 不能混用，下游需整体切换
 gpui = { package = "gpui-pre", version = "=0.3.14" }
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.14" }
-gpui-widgets = "0.2"
+gpui-widgets = "0.3"
 ```
 
 ### 本地开发模式（仅开发期）

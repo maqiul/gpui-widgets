@@ -191,7 +191,7 @@
 
 ```toml
 [dependencies]
-gpui-widgets = "0.2"   # crates.io 发布版
+gpui-widgets = "0.3"   # crates.io 发布版
 # gpui-pre 的库名仍是 gpui；与官方 gpui 0.2.2 不能混用，下游需整体切换
 gpui = { package = "gpui-pre", version = "=0.3.14" }
 # 宿主入口（gpui 0.3.14 起平台层拆到独立 crate）

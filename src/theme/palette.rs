@@ -267,11 +267,7 @@ const DARK_COLOR_MAP: [(usize, f32); 10] = [
 fn get_hue(hsv_h: f32, i: f32, light: bool) -> f32 {
     let h = hsv_h.round();
     let mut hue = if h >= 60.0 && h <= 240.0 {
-        if light {
-            h - HUE_STEP * i
-        } else {
-            h + HUE_STEP * i
-        }
+        if light { h - HUE_STEP * i } else { h + HUE_STEP * i }
     } else if light {
         h + HUE_STEP * i
     } else {
@@ -363,13 +359,29 @@ pub fn palette(base: Color, dark: bool, background: Color) -> [Color; 10] {
     };
     if dark {
         [
-            steps[0], steps[1], steps[2], steps[3], steps[6], steps[5], steps[4], steps[6],
-            steps[5], steps[4],
+            steps[0],
+            steps[1],
+            steps[2],
+            steps[3],
+            steps[6],
+            steps[5],
+            steps[4],
+            steps[6],
+            steps[5],
+            steps[4],
         ]
     } else {
         [
-            steps[0], steps[1], steps[2], steps[3], steps[4], steps[5], steps[6], steps[4],
-            steps[5], steps[6],
+            steps[0],
+            steps[1],
+            steps[2],
+            steps[3],
+            steps[4],
+            steps[5],
+            steps[6],
+            steps[4],
+            steps[5],
+            steps[6],
         ]
     }
 }
@@ -383,11 +395,7 @@ pub fn alpha_over(front: Color, background: Color) -> Color {
     for i in 1..=100 {
         let fa = (i as f32 / 100.0 * 100.0).round() / 100.0;
         let calc = |f: f32, b: f32| round((f - b * (1.0 - fa)) / fa);
-        let (r, g, b) = (
-            calc(front.r, background.r),
-            calc(front.g, background.g),
-            calc(front.b, background.b),
-        );
+        let (r, g, b) = (calc(front.r, background.r), calc(front.g, background.g), calc(front.b, background.b));
         let stable = |v: f32| v >= 0.0 && v <= 255.0;
         if stable(r) && stable(g) && stable(b) {
             return Color { r, g, b, a: fa };

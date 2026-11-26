@@ -30,47 +30,12 @@ pub struct PresetPalette {
 
 pub fn preset_palette(color: PresetColor) -> PresetPalette {
     match color {
-        PresetColor::Blue => PresetPalette {
-            light: Color::from_hex(0xe6f4ff),
-            border: Color::from_hex(0x91caff),
-            solid: Color::from_hex(0x1677ff),
-            text: Color::from_hex(0x0958d9),
-        },
-        PresetColor::Green => PresetPalette {
-            light: Color::from_hex(0xf6ffed),
-            border: Color::from_hex(0xb7eb8f),
-            solid: Color::from_hex(0x52c41a),
-            text: Color::from_hex(0x389e0d),
-        },
-        PresetColor::Orange => PresetPalette {
-            light: Color::from_hex(0xfff7e6),
-            border: Color::from_hex(0xffd591),
-            solid: Color::from_hex(0xfa8c16),
-            text: Color::from_hex(0xd46b08),
-        },
-        PresetColor::Red => PresetPalette {
-            light: Color::from_hex(0xfff1f0),
-            border: Color::from_hex(0xffa39e),
-            solid: Color::from_hex(0xf5222d),
-            text: Color::from_hex(0xcf1322),
-        },
-        PresetColor::Purple => PresetPalette {
-            light: Color::from_hex(0xf9f0ff),
-            border: Color::from_hex(0xd3adf7),
-            solid: Color::from_hex(0x722ed1),
-            text: Color::from_hex(0x531dab),
-        },
-        PresetColor::Cyan => PresetPalette {
-            light: Color::from_hex(0xe6fffb),
-            border: Color::from_hex(0x87e8de),
-            solid: Color::from_hex(0x13c2c2),
-            text: Color::from_hex(0x08979c),
-        },
-        PresetColor::Magenta => PresetPalette {
-            light: Color::from_hex(0xfff0f6),
-            border: Color::from_hex(0xffadd2),
-            solid: Color::from_hex(0xeb2f96),
-            text: Color::from_hex(0xc41d7f),
-        },
+        PresetColor::Blue => PresetPalette { light: Color::from_hex(0xe6f4ff), border: Color::from_hex(0x91caff), solid: Color::from_hex(0x1677ff), text: Color::from_hex(0x0958d9) },
+        PresetColor::Green => PresetPalette { light: Color::from_hex(0xf6ffed), border: Color::from_hex(0xb7eb8f), solid: Color::from_hex(0x52c41a), text: Color::from_hex(0x389e0d) },
+        PresetColor::Orange => PresetPalette { light: Color::from_hex(0xfff7e6), border: Color::from_hex(0xffd591), solid: Color::from_hex(0xfa8c16), text: Color::from_hex(0xd46b08) },
+        PresetColor::Red => PresetPalette { light: Color::from_hex(0xfff1f0), border: Color::from_hex(0xffa39e), solid: Color::from_hex(0xf5222d), text: Color::from_hex(0xcf1322) },
+        PresetColor::Purple => PresetPalette { light: Color::from_hex(0xf9f0ff), border: Color::from_hex(0xd3adf7), solid: Color::from_hex(0x722ed1), text: Color::from_hex(0x531dab) },
+        PresetColor::Cyan => PresetPalette { light: Color::from_hex(0xe6fffb), border: Color::from_hex(0x87e8de), solid: Color::from_hex(0x13c2c2), text: Color::from_hex(0x08979c) },
+        PresetColor::Magenta => PresetPalette { light: Color::from_hex(0xfff0f6), border: Color::from_hex(0xffadd2), solid: Color::from_hex(0xeb2f96), text: Color::from_hex(0xc41d7f) },
     }
 }
