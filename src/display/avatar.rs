@@ -2,7 +2,13 @@
 //!
 //! 对齐 antdv-next Avatar：默认底 `colorTextPlaceholder`、白色文字、字号 14。
 
-use gpui::{Div, Hsla, IntoElement, Pixels, Role, SharedString, Stateful, div, prelude::*, px};
+use std::{cell::Cell, rc::Rc, sync::Arc};
+
+use gpui::{
+    App, Asset, ElementId, Hsla, ImageCacheError, ImageSource, ImgResourceLoader, IntoElement,
+    ObjectFit, Pixels, RenderImage, RenderOnce, Role, SharedString, StyledImage, Window, div, img,
+    prelude::*, px,
+};
 
 use crate::a11y::Semantics;
 use crate::theme::{self, Tokens, metric};
@@ -53,6 +59,53 @@ pub fn avatar_state(tokens: &Tokens, size: AvatarSize, square: bool) -> AvatarSt
     }
 }
 
+/// 自定义头像边长时，文字与行高按预设尺寸等比缩放。
+pub fn avatar_scaled_text_metrics(style: AvatarStyle, size: f32) -> (f32, f32) {
+    let scale = if style.size > 0. {
+        size.max(0.) / style.size
+    } else {
+        1.
+    };
+    (style.font_size * scale, style.line_height * scale)
+}
+
+fn avatar_source_key(source: &ImageSource) -> String {
+    match source {
+        ImageSource::Resource(resource) => format!("resource:{resource:?}"),
+        ImageSource::Render(image) => format!("render:{:p}", Arc::as_ptr(image)),
+        ImageSource::Image(image) => format!("image:{:p}", Arc::as_ptr(image)),
+        ImageSource::Custom(loader) => format!("custom:{:p}", Arc::as_ptr(loader)),
+    }
+}
+
+struct AvatarImageDecoder;
+
+impl Asset for AvatarImageDecoder {
+    type Source = Arc<gpui::Image>;
+    type Output = Result<Arc<RenderImage>, ImageCacheError>;
+
+    fn load(
+        source: Self::Source,
+        cx: &mut App,
+    ) -> impl std::future::Future<Output = Self::Output> + Send + 'static {
+        let renderer = cx.svg_renderer();
+        async move { source.to_image_data(renderer).map_err(Into::into) }
+    }
+}
+
+fn load_avatar_image(
+    source: &ImageSource,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<Result<Arc<RenderImage>, ImageCacheError>> {
+    match source {
+        ImageSource::Resource(resource) => window.use_asset::<ImgResourceLoader>(resource, cx),
+        ImageSource::Render(image) => Some(Ok(image.clone())),
+        ImageSource::Image(image) => window.use_asset::<AvatarImageDecoder>(image, cx),
+        ImageSource::Custom(loader) => loader(window, cx),
+    }
+}
+
 /// 通用头像。
 ///
 /// ```ignore
@@ -60,6 +113,7 @@ pub fn avatar_state(tokens: &Tokens, size: AvatarSize, square: bool) -> AvatarSt
 /// Avatar::new("Alice").preset(AvatarSize::Large)
 /// Avatar::new("Bob").size(px(48.))
 /// ```
+#[derive(IntoElement)]
 pub struct Avatar {
     id: Option<SharedString>,
     origin: SharedString,
@@ -67,6 +121,9 @@ pub struct Avatar {
     preset: AvatarSize,
     size: Option<Pixels>,
     square: bool,
+    image: Option<ImageSource>,
+    image_error: bool,
+    on_image_error: Option<Rc<dyn Fn(&ImageCacheError, &mut Window, &mut App)>>,
 }
 
 impl Avatar {
@@ -86,6 +143,9 @@ impl Avatar {
             preset: AvatarSize::Default,
             size: None,
             square: false,
+            image: None,
+            image_error: false,
+            on_image_error: None,
         }
     }
 
@@ -112,6 +172,27 @@ impl Avatar {
         self
     }
 
+    /// 图片内容；加载中或失败时回退到名字首字符。
+    pub fn image(mut self, source: impl Into<ImageSource>) -> Self {
+        self.image = Some(source.into());
+        self
+    }
+
+    /// 外部控制图片失败态；为 `true` 时强制显示首字符回退。
+    pub fn image_error(mut self, error: bool) -> Self {
+        self.image_error = error;
+        self
+    }
+
+    /// 图片加载失败通知；适合驱动受控的 `image_error` 状态。
+    pub fn on_image_error(
+        mut self,
+        listener: impl Fn(&ImageCacheError, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_image_error = Some(Rc::new(listener));
+        self
+    }
+
     fn initial(&self) -> String {
         self.name
             .chars()
@@ -121,10 +202,8 @@ impl Avatar {
     }
 }
 
-impl IntoElement for Avatar {
-    type Element = Stateful<Div>;
-
-    fn into_element(self) -> Self::Element {
+impl RenderOnce for Avatar {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let style = theme::with(|t| avatar_state(t, self.preset, self.square));
         let size = self.size.unwrap_or(px(style.size));
         let radius = if self.square {
@@ -132,27 +211,112 @@ impl IntoElement for Avatar {
         } else {
             size / 2.0
         };
-
-        let semantics = Semantics::new(Role::Image, self.name.clone()).id(format!(
-            "{}-{}",
-            self.id.as_deref().unwrap_or(&self.origin),
-            self.name
-        ));
+        let (font_size, line_height) = avatar_scaled_text_metrics(style, f32::from(size));
+        let owner = self.id.as_deref().unwrap_or(&self.origin);
+        let semantics =
+            Semantics::new(Role::Image, self.name.clone()).id(format!("{}-{}", owner, self.name));
         let element_id = semantics.element_id();
-        semantics.apply(
-            div()
-                .id(element_id)
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(size)
-                .rounded(radius)
-                .bg(style.bg)
-                .text_color(style.text)
-                .text_size(px(style.font_size))
-                .line_height(px(style.line_height))
-                .child(self.initial()),
-        )
+        let mut root = div()
+            .id(element_id)
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(size)
+            .rounded(radius)
+            .overflow_hidden()
+            .bg(style.bg)
+            .text_color(style.text)
+            .text_size(px(font_size))
+            .line_height(px(line_height));
+
+        let initial = self.initial();
+        if let Some(source) = self.image.filter(|_| !self.image_error) {
+            let notified = window
+                .use_keyed_state(
+                    ElementId::Name(format!("{owner}-image-{}", avatar_source_key(&source)).into()),
+                    cx,
+                    |_, _| Rc::new(Cell::new(false)),
+                )
+                .read(cx)
+                .clone();
+            let on_error = self.on_image_error.clone();
+            let loading_initial = initial.clone();
+            let fallback_initial = initial;
+            let image = img(move |window: &mut Window, cx: &mut App| {
+                let result = load_avatar_image(&source, window, cx);
+                if let Some(Err(error)) = &result
+                    && !notified.replace(true)
+                    && let Some(on_error) = on_error.clone()
+                {
+                    let error = error.clone();
+                    let on_error = on_error.clone();
+                    window.defer(cx, move |window, cx| on_error(&error, window, cx));
+                }
+                result
+            })
+            .object_fit(ObjectFit::Cover)
+            .size_full()
+            .rounded(radius)
+            .with_loading(move || {
+                div()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(loading_initial.clone())
+                    .into_any_element()
+            })
+            .with_fallback(move || {
+                div()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(fallback_initial.clone())
+                    .into_any_element()
+            });
+            root = root.child(image);
+        } else {
+            root = root.child(initial);
+        }
+
+        semantics.apply(root)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_uses_first_unicode_scalar() {
+        assert_eq!(Avatar::new("张三").initial(), "张");
+        assert_eq!(Avatar::new("Alice").initial(), "A");
+        assert!(Avatar::new("").initial().is_empty());
+    }
+
+    #[test]
+    fn custom_size_scales_text_metrics() {
+        let style = AvatarStyle {
+            bg: gpui::black(),
+            text: gpui::white(),
+            size: 32.,
+            radius: 16.,
+            font_size: 14.,
+            line_height: 22.,
+        };
+        assert_eq!(avatar_scaled_text_metrics(style, 32.), (14., 22.));
+        assert_eq!(avatar_scaled_text_metrics(style, 48.), (21., 33.));
+        assert_eq!(avatar_scaled_text_metrics(style, 16.), (7., 11.));
+    }
+
+    #[test]
+    fn resource_source_key_is_stable() {
+        let a = avatar_source_key(&ImageSource::from("avatar.png"));
+        let b = avatar_source_key(&ImageSource::from("avatar.png"));
+        let c = avatar_source_key(&ImageSource::from("other.png"));
+        assert_eq!(a, b);
+        assert_ne!(a, c);
     }
 }

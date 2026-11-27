@@ -3,8 +3,9 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Context, CursorStyle, Div, ElementId, Hsla, IntoElement, MouseButton, Render, Role,
-    SharedString, Stateful, Window, div, prelude::*, px, transparent_black,
+    App, Bounds, Context, CursorStyle, Div, ElementId, Hsla, IntoElement, MouseButton, Pixels,
+    Render, RenderOnce, Role, ScrollHandle, SharedString, Stateful, Window, div, point, prelude::*,
+    px, transparent_black,
 };
 
 use crate::a11y;
@@ -79,6 +80,43 @@ pub fn tabs_ink_state(tokens: &Tokens) -> Hsla {
     tokens.color_primary
 }
 
+/// 溢出状态与视口宽度：箭头出现会缩小视口，需再校正一次活动页。
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct NavOverflow {
+    overflow: bool,
+    at_start: bool,
+    at_end: bool,
+    viewport_w: f32,
+}
+
+impl NavOverflow {
+    fn from_scroll(offset: Pixels, max: Pixels, viewport_w: Pixels) -> Self {
+        let overflow = max > px(0.);
+        Self {
+            overflow,
+            at_start: offset >= px(0.),
+            at_end: !overflow || offset <= -max,
+            viewport_w: viewport_w.into(),
+        }
+    }
+}
+
+/// 点击 ‹ / › 后的目标偏移：向右翻页取负向，clamp 在 [−max, 0]
+fn arrow_target(offset: Pixels, max: Pixels, step: Pixels, forward: bool) -> Pixels {
+    let next = if forward {
+        offset - step
+    } else {
+        offset + step
+    };
+    if next < -max {
+        -max
+    } else if next > px(0.) {
+        px(0.)
+    } else {
+        next
+    }
+}
+
 /// 通用标签页。
 ///
 /// ```ignore
@@ -88,6 +126,7 @@ pub fn tabs_ink_state(tokens: &Tokens) -> Hsla {
 ///         cx.notify();
 ///     }))
 /// ```
+#[derive(IntoElement)]
 pub struct Tabs {
     id: Option<ElementId>,
     origin: SharedString,
@@ -100,9 +139,11 @@ pub struct Tabs {
     draggable: bool,
     small: bool,
     large: bool,
+    scrollable: bool,
     on_select: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
     on_close: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
     on_reorder: Option<Rc<dyn Fn(&(usize, usize), &mut Window, &mut App)>>,
+    on_add: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
 }
 
 impl Tabs {
@@ -127,9 +168,11 @@ impl Tabs {
             draggable: false,
             small: false,
             large: false,
+            scrollable: false,
             on_select: None,
             on_close: None,
             on_reorder: None,
+            on_add: None,
         }
     }
 
@@ -200,12 +243,22 @@ impl Tabs {
         self.on_reorder = Some(Rc::new(listener));
         self
     }
+
+    /// 溢出时显示 ‹ › 箭头并自动滚入活动页；`centered()` 在滚动模式下不生效。
+    pub fn scrollable(mut self) -> Self {
+        self.scrollable = true;
+        self
+    }
+
+    /// 末尾追加「＋」新增按钮（antd 可编辑卡片形态），点击触发回调
+    pub fn on_add(mut self, listener: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_add = Some(Rc::new(listener));
+        self
+    }
 }
 
-impl IntoElement for Tabs {
-    type Element = Stateful<Div>;
-
-    fn into_element(self) -> Self::Element {
+impl RenderOnce for Tabs {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         theme::with(|tokens| {
             let m = metric::TabsMetric::resolve(tokens);
             let kind = if self.card {
@@ -237,16 +290,106 @@ impl IntoElement for Tabs {
                 prefix.clone().into()
             };
             let tab_list_id = format!("{owner}-tab-list");
-            let mut bar = a11y::Semantics::new(Role::TabList, "标签页")
-                .id(tab_list_id.clone())
-                .apply(div().id(ElementId::Name(tab_list_id.into())))
+            let scrollable = self.scrollable;
+            let active = self.active;
+            let card = self.card;
+
+            // 滚动模式的跨帧状态：滚动句柄 / 溢出标志 / 上次活动页签
+            let (scroll, nav, last_active) = if scrollable {
+                let scroll = window
+                    .use_keyed_state(
+                        ElementId::Name(format!("{owner}-tab-scroll").into()),
+                        cx,
+                        |_, _| ScrollHandle::new(),
+                    )
+                    .read(cx)
+                    .clone();
+                let nav = window.use_keyed_state(
+                    ElementId::Name(format!("{owner}-tab-nav-state").into()),
+                    cx,
+                    |_, _| NavOverflow::default(),
+                );
+                let last_active = window.use_keyed_state(
+                    ElementId::Name(format!("{owner}-tab-active").into()),
+                    cx,
+                    |_, _| usize::MAX,
+                );
+                (Some(scroll), Some(nav), Some(last_active))
+            } else {
+                (None, None, None)
+            };
+
+            // 预绘监听挂在 Stateful 转换前，才能读取 track_scroll 记录的页签布局框。
+            const ARROW_WIDTH: f32 = 32.0;
+            let nav_listener = match (&scroll, &nav, &last_active) {
+                (Some(scroll), Some(nav), Some(last_active)) => {
+                    let scroll = scroll.clone();
+                    let nav = nav.clone();
+                    let last_active = last_active.clone();
+                    Some(
+                        move |_bounds: Vec<Bounds<Pixels>>, _window: &mut Window, cx: &mut App| {
+                            let viewport = scroll.bounds();
+                            let max = scroll.max_offset().x;
+                            let next = NavOverflow::from_scroll(
+                                scroll.offset().x,
+                                max,
+                                viewport.size.width,
+                            );
+                            let prev = *nav.read(cx);
+                            if prev != next {
+                                nav.write(cx, next);
+                                cx.refresh_windows();
+                            }
+                            let width_changed = (prev.viewport_w - next.viewport_w).abs() > 0.5;
+                            let active_changed = *last_active.read(cx) != active;
+                            if !active_changed && !width_changed {
+                                return;
+                            }
+                            let Some(tab) = scroll.bounds_for_item(active) else {
+                                return;
+                            };
+                            let inset = px(ARROW_WIDTH);
+                            let mut offset = scroll.offset();
+                            let left = tab.left() + offset.x;
+                            let right = tab.right() + offset.x;
+                            if left < viewport.left() + inset {
+                                offset.x =
+                                    (offset.x + (viewport.left() + inset - left)).min(px(0.));
+                            } else if right > viewport.right() - inset {
+                                offset.x =
+                                    (offset.x - (right - (viewport.right() - inset))).max(-max);
+                            }
+                            scroll.set_offset(offset);
+                            if active_changed {
+                                last_active.write(cx, active);
+                            }
+                            cx.refresh_windows();
+                        },
+                    )
+                }
+                _ => None,
+            };
+
+            let mut bar = div();
+            if let Some(listener) = nav_listener {
+                bar = bar.on_children_prepainted(listener);
+            }
+            let mut bar = bar
+                .id(ElementId::Name(tab_list_id.clone().into()))
                 .flex()
                 .flex_row()
-                .items_center()
-                .border_b(px(m.divider_width))
-                .border_color(rail);
-            if self.centered {
-                bar = bar.justify_center();
+                .items_center();
+            if let Some(scroll) = &scroll {
+                bar = bar
+                    .flex_1()
+                    .min_w(px(0.))
+                    .overflow_x_scroll()
+                    .track_scroll(scroll);
+            } else {
+                bar = bar.border_b(px(m.divider_width)).border_color(rail);
+                if self.centered {
+                    bar = bar.justify_center();
+                }
             }
 
             for (ix, label) in self.items.into_iter().enumerate() {
@@ -288,11 +431,11 @@ impl IntoElement for Tabs {
                     .line_height(px(m.line_height[size]))
                     .text_color(style.text);
                 if ix > 0 {
-                    let gap = if self.card { m.card_gutter } else { m.item_gap };
+                    let gap = if card { m.card_gutter } else { m.item_gap };
                     tab = tab.ml(px(gap));
                 }
 
-                if self.card {
+                if card {
                     tab = tab
                         .px(px(m.card_padding_inline[size]))
                         .pt(px(m.card_padding_block[size]))
@@ -435,7 +578,117 @@ impl IntoElement for Tabs {
                 bar = bar.child(tab);
             }
 
-            bar
+            if let Some(on_add) = self.on_add.clone() {
+                let add_id = format!("{owner}-tab-add");
+                let primary = tokens.color_primary;
+                let mut add = a11y::Semantics::new(Role::Button, "新增标签页")
+                    .id(add_id.clone())
+                    .focusable(true)
+                    .apply(div().id(ElementId::Name(add_id.into())))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .flex_shrink_0()
+                    .cursor(CursorStyle::PointingHand)
+                    .text_size(px(m.font_size[size]))
+                    .line_height(px(m.line_height[size]))
+                    .text_color(tokens.color_text)
+                    .hover(move |style| style.text_color(primary));
+                if card {
+                    add = add
+                        .ml(px(m.card_gutter))
+                        .px(px(m.card_padding_inline[size]))
+                        .pt(px(m.card_padding_block[size]))
+                        .pb(px(m.card_padding_block[size]))
+                        .rounded_t(px(m.card_radius[size]))
+                        .border_1()
+                        .border_color(tokens.color_border_secondary)
+                        .bg(tokens.color_fill_alter)
+                        .mb(px(-m.divider_width));
+                } else {
+                    add = add
+                        .ml(px(m.item_gap))
+                        .pt(px(m.padding_block[size]))
+                        .pb(px(m.padding_block[size] - m.ink_height));
+                }
+                add = a11y::click_void(add, move |window, cx| on_add(window, cx));
+                bar = bar.child(add);
+            }
+
+            // 非滚动模式：保持原结构，语义直接挂在导航行
+            let Some(scroll) = scroll else {
+                let bar = a11y::Semantics::new(Role::TabList, "标签页")
+                    .id(tab_list_id)
+                    .apply(bar);
+                return bar.into_any_element();
+            };
+            let nav = nav.expect("scrollable tabs nav state");
+
+            let bar = a11y::Semantics::new(Role::TabList, "标签页")
+                .id(tab_list_id)
+                .apply(bar);
+
+            let state = *nav.read(cx);
+            let step = scroll.bounds().size.width * 0.8;
+            let make_arrow = |forward: bool, enabled: bool, glyph: &'static str| -> Stateful<Div> {
+                let id = format!("{owner}-tab-{}", if forward { "next" } else { "prev" });
+                let label = if forward {
+                    "向右滚动标签页"
+                } else {
+                    "向左滚动标签页"
+                };
+                let mut arrow = a11y::Semantics::new(Role::Button, label)
+                    .id(id.clone())
+                    .disabled(!enabled)
+                    .focusable(enabled)
+                    .apply(div().id(ElementId::Name(id.into())))
+                    .w(px(ARROW_WIDTH))
+                    .self_stretch()
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(px(tokens.font_size_lg))
+                    .line_height(px(m.line_height[size]))
+                    .text_color(if enabled {
+                        tokens.color_icon
+                    } else {
+                        tokens.color_text_disabled
+                    })
+                    .bg(tokens.color_bg_container);
+                if enabled {
+                    let primary = tokens.color_primary;
+                    let handle = scroll.clone();
+                    arrow = arrow
+                        .cursor(CursorStyle::PointingHand)
+                        .hover(move |style| style.text_color(primary));
+                    arrow = a11y::click_void(arrow, move |_window, cx| {
+                        let max = handle.max_offset().x;
+                        let current = handle.offset();
+                        let x = arrow_target(current.x, max, step, forward);
+                        handle.set_offset(point(x, current.y));
+                        cx.refresh_windows();
+                    });
+                }
+                arrow.child(glyph)
+            };
+
+            let mut outer = div()
+                .id(ElementId::Name(format!("{owner}-tab-nav").into()))
+                .flex()
+                .flex_row()
+                .items_center()
+                .w_full()
+                .border_b(px(m.divider_width))
+                .border_color(rail);
+            if state.overflow {
+                outer = outer.child(make_arrow(false, !state.at_start, "‹"));
+            }
+            outer = outer.child(bar);
+            if state.overflow {
+                outer = outer.child(make_arrow(true, !state.at_end, "›"));
+            }
+            outer.into_any_element()
         })
     }
 }
@@ -493,7 +746,8 @@ impl Render for TabDragGhost {
 
 #[cfg(test)]
 mod tests {
-    use super::tab_target;
+    use super::{NavOverflow, arrow_target, tab_target};
+    use gpui::px;
 
     #[test]
     fn tab_target_skips_disabled_and_wraps() {
@@ -507,5 +761,54 @@ mod tests {
         assert_eq!(tab_target(0, "enter", 4, &[]), None);
         assert_eq!(tab_target(0, "arrowright", 0, &[]), None);
         assert_eq!(tab_target(0, "arrowright", 2, &[0, 1]), None);
+    }
+
+    #[test]
+    fn nav_overflow_flags_track_ends() {
+        assert_eq!(
+            NavOverflow::from_scroll(px(0.), px(0.), px(320.)),
+            NavOverflow {
+                overflow: false,
+                at_start: true,
+                at_end: true,
+                viewport_w: 320.,
+            }
+        );
+        assert_eq!(
+            NavOverflow::from_scroll(px(0.), px(100.), px(320.)),
+            NavOverflow {
+                overflow: true,
+                at_start: true,
+                at_end: false,
+                viewport_w: 320.,
+            }
+        );
+        assert_eq!(
+            NavOverflow::from_scroll(px(-40.), px(100.), px(320.)),
+            NavOverflow {
+                overflow: true,
+                at_start: false,
+                at_end: false,
+                viewport_w: 320.,
+            }
+        );
+        assert_eq!(
+            NavOverflow::from_scroll(px(-100.), px(100.), px(320.)),
+            NavOverflow {
+                overflow: true,
+                at_start: false,
+                at_end: true,
+                viewport_w: 320.,
+            }
+        );
+    }
+
+    #[test]
+    fn arrow_target_clamps_to_scroll_range() {
+        assert_eq!(arrow_target(px(0.), px(100.), px(60.), true), px(-60.));
+        assert_eq!(arrow_target(px(-60.), px(100.), px(60.), true), px(-100.));
+        assert_eq!(arrow_target(px(-100.), px(100.), px(60.), false), px(-40.));
+        assert_eq!(arrow_target(px(-30.), px(100.), px(60.), false), px(0.));
+        assert_eq!(arrow_target(px(0.), px(0.), px(60.), true), px(0.));
     }
 }

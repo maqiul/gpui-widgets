@@ -2,7 +2,7 @@
 
 # gpui-widgets Controls Reference
 
-> This reference documents the library's **98 documented controls / 101 entries** and also covers **8 public advanced/host modules**. Every entry includes its **purpose, creation signature, state model, properties, callbacks (with exact types), minimal example, and caveats**.
+> This reference documents the library's **103 documented controls / 106 entries** and also covers **8 public advanced/host modules**. Every entry includes its **purpose, creation signature, state model, properties, callbacks (with exact types), minimal example, and caveats**.
 >
 > Companion documentation:
 > - [`README.en.md`](../README.en.md): a control category overview and usage conventions (quick reference).
@@ -16,9 +16,9 @@
 ## Table of Contents
 
 - [I. Core Concepts (Read Before Using Any Control)](#i-core-concepts-read-before-using-any-control)
-- [II. General](#ii-general): Button · Link · Title/Paragraph/Text · Kbd
-- [III. Layout](#iii-layout): Row/Col · Header/Sider/Content/Footer · Space · Splitter · Scrollbar
-- [IV. Navigation](#iv-navigation): Anchor · Breadcrumb · DropdownMenu · NavMenu · Pagination · Steps · Tabs · ContextMenu · FloatButton · CommandPalette
+- [II. General](#ii-general): Button · Link · Title/Paragraph/Text · Kbd · Toolbar
+- [III. Layout](#iii-layout): Row/Col · Header/Sider/Content/Footer · Space · Splitter · Scrollbar · Flex · Affix · StatusBar
+- [IV. Navigation](#iv-navigation): Anchor · Breadcrumb · DropdownMenu · MenuBar · NavMenu · Pagination · Steps · Tabs · ContextMenu · FloatButton · CommandPalette
 - [V. Data Entry](#v-data-entry): TextInput … FormItem (28 controls)
 - [VI. Data Display](#vi-data-display): Table … Tour (33 controls)
 - [VII. Feedback](#vii-feedback): Alert … Watermark (12 controls)
@@ -124,7 +124,7 @@ GPUI determines hover / drag / keyed state by `ElementId`. **IDs of multiple ins
 
 ### 1.4 Popup Positioning Mechanism (Shared Convention)
 
-The popups of Select / MultiSelect / DropdownMenu / Popover / DatePicker / DateRangePicker / ColorPicker / Cascader / TimePicker / TreeSelect / Popconfirm share the same positioning behavior:
+The popups of Select / MultiSelect / DropdownMenu / MenuBar / Popover / DatePicker / DateRangePicker / ColorPicker / Cascader / TimePicker / TreeSelect / Popconfirm share the same positioning behavior:
 
 - Open **4px below** the trigger; **automatically flip above** it when there is insufficient space below the window edge.
 - **Click outside to dismiss**.
@@ -180,6 +180,28 @@ Button::new("Submit").primary().loading(self.submitting)
     .on_click(cx.listener(|this, _, _, cx| { this.submit(cx); }))
 ```
 
+### Toolbar · Toolbar
+
+A horizontal or vertical collection of action buttons with selected and disabled states, separators, and flexible spacers. **Controlled component**, **requires a unique ID**.
+
+- **Creation**: `Toolbar::new(id, vec![ToolbarItem…])`; create an action with `ToolbarItem::new(id, label)`.
+- **ToolbarItem properties**: `icon(element)`, `icon_only()`, `selected(bool)`, `disabled(bool)`, and `on_click(&mut Window, &mut App)`; structural entries are `ToolbarItem::separator()` / `ToolbarItem::spacer()`.
+- **Toolbar properties**: `vertical(true)` switches to a vertical layout.
+- **Callback**: `on_action(&SharedString, &mut Window, &mut App)` receives the action item ID; both the item-level `on_click` and the unified `on_action` fire.
+- **Keyboard / accessibility**: uses `Role::Toolbar`; arrow keys move focus between actions, Home / End jump to the first / last action, selected items expose toggled state, and disabled items cannot receive focus or fire.
+- **Caveat**: `icon_only()` still uses `label` as its accessible name and falls back to visible text when no icon is supplied.
+
+```rust
+Toolbar::new("editor-tools", vec![
+    ToolbarItem::new("bold", "Bold").icon_only().selected(self.bold),
+    ToolbarItem::separator(),
+    ToolbarItem::spacer(),
+    ToolbarItem::new("save", "Save"),
+])
+.vertical(false)
+.on_action(cx.listener(|this, id, _, cx| { this.run_tool(id); cx.notify(); }))
+```
+
 ### Link · Link
 
 A text link underlined on hover. **Controlled component**.
@@ -198,20 +220,50 @@ Link::new("Details").on_click(move |_w, cx| { let _ = entity.update(cx, |this, c
 
 ### Title / Paragraph / Text · Typography Trio
 
-Display-only text. **Controlled component** (no callbacks).
+Supports display-only text, controlled editing, copying, and truncation with expansion. The parent view owns editing and expansion state.
 
 - **Creation**:
   - `Title::new(level: u8, text)`: heading levels 1–5.
   - `Paragraph::new(text)`: paragraph.
   - `Text::new(text)`: inline text.
-- **Properties** (Text family): `strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()`.
-- **Caveat**: properties such as size and color can be forwarded through `Styled` (`.text_color()` / `.text_size()`, etc.).
+- **Shared properties**: `id()` for a stable identity; `title()` for a custom hover tooltip; `editable()` / `copyable()` / `ellipsis()` interaction configs.
+- **Controlled editing**: `EditableConfig` provides `editing(bool)`, `on_editing_change(&bool)`, `on_change(&str)`, `on_start()`, `on_cancel()`, `on_end()`, and `max_length()`. Enter commits and fires `on_change`; Escape cancels without committing.
+- **Copying**: `CopyConfig` provides `text()` for custom clipboard content, `tooltip()`, and `on_copy()`. The action icon briefly changes to ✓ after copying.
+- **Truncation and expansion**: `EllipsisConfig` provides `max_chars()`, `expandable()`, `expanded(bool)`, `on_expand(&bool)`, `symbol()`, and `tooltip()`. Truncation respects Unicode grapheme clusters and shows the full text in a tooltip while collapsed; `truncate_text(text, max_chars, symbol)` is also available separately.
+- **Text modifiers**: `strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()`; `Paragraph` supports every modifier.
+- **Caveat**: provide a unique `id()` when a view contains multiple interactive instances. Size and color can still be forwarded through `Styled` (`.text_color()` / `.text_size()`, etc.).
 
 ```rust
-div().flex().flex_col().gap_2()
-    .child(Title::new(2, "Section heading"))
-    .child(Paragraph::new("This is an explanatory paragraph."))
-    .child(Text::new("Inline emphasis").strong())
+Title::new(2, title)
+    .id("article-title")
+    .editable(
+        EditableConfig::default()
+            .editing(editing)
+            .max_length(80)
+            .on_editing_change(cx.listener(|this, editing, _, cx| {
+                this.editing = *editing;
+                cx.notify();
+            }))
+            .on_change(cx.listener(|this, value: &str, _, cx| {
+                this.title = value.to_string();
+                cx.notify();
+            })),
+    );
+
+Paragraph::new("Click to copy this description")
+    .copyable(CopyConfig::default().tooltip("Copy description"));
+
+Text::new("This is a longer inline text")
+    .ellipsis(
+        EllipsisConfig::default()
+            .max_chars(12)
+            .expandable(true)
+            .expanded(expanded)
+            .on_expand(cx.listener(|this, expanded, _, cx| {
+                this.expanded = *expanded;
+                cx.notify();
+            })),
+    );
 ```
 
 ### Kbd · Keycap
@@ -299,7 +351,7 @@ GPUI does not draw scrollbars by default. This control provides visible, interac
   1. The bound `ScrollHandle` **must persist across frames** (store it in a view field or `window.use_keyed_state`).
   2. The scroll container must attach `.track_scroll(&handle)`—both share the same offset, allowing `set_offset` to drive scrolling and keeping the thumb synchronized with the scroll wheel in real time.
   3. The parent container must use `.relative()`, while the scrollbar uses `.absolute()` to stay at the edge.
-- **Caveat**: `Table` `fixed_left()` already includes a horizontal scrollbar; you do not need to add one manually.
+- **Caveat**: `Table` `fixed_left()` / `fixed_right_columns(n)` already includes a horizontal scrollbar; you do not need to add one manually.
 
 ```rust
 // View field: scroll_handle: ScrollHandle (initialize with the ScrollHandle::new() constructor)
@@ -314,6 +366,68 @@ div().relative().size_full()
         div().absolute().top_0().bottom_0().right_0()
             .child(Scrollbar::vertical("vsb", self.scroll_handle.clone())),
     )
+```
+
+### Flex · Flex Layout
+
+A lightweight wrapper over GPUI flex styles. Defaults to horizontal, no-wrap, `stretch` alignment, and `justify-start`. **Controlled component** (no callbacks, no ID required).
+
+- **Creation**: `Flex::new()`.
+- **Direction / wrapping**: `row()` / `column()`; `wrap()` / `wrap_reverse()` / `nowrap()`.
+- **Spacing**: `gap(px)`.
+- **Cross-axis alignment**: `items_start()` / `items_center()` / `items_end()` / `items_baseline()` / `items_stretch()`.
+- **Main-axis alignment**: `justify_start()` / `justify_center()` / `justify_end()` / `justify_between()` / `justify_around()` / `justify_evenly()`.
+- **Own flexing**: `grow(f32)` / `shrink(f32)` / `basis(impl Into<Length>)`.
+- **Children**: `child(...)` / `children(...)`.
+
+```rust
+Flex::new()
+    .wrap()
+    .gap(px(8.))
+    .items_center()
+    .justify_between()
+    .child("Left")
+    .children((1..=4).map(|i| format!("Item {i}")))
+```
+
+### Affix · Sticky Top / Bottom
+
+Pins its child to the top or bottom of a scroll viewport after the scroll crosses a threshold. **Wrapper / bound persistent ScrollHandle**, **requires a unique ID**.
+
+- **Creation**: `Affix::new(id, child, scroll: ScrollHandle)`.
+- **Properties**: `offset_top(px)` selects top pinning; `offset_bottom(px)` selects bottom pinning. Defaults to top with zero offset.
+- **Key conventions**: the scroll container must use the same `ScrollHandle` and attach `.overflow_y_scroll().track_scroll(&scroll)`; the handle must persist across frames.
+- **Implementation**: a placeholder preserves document-flow height, while the real child stays mounted. `anchored()` positions it in window coordinates, and `deferred` drawing keeps it above the scrolling content, so switching between pinned and unpinned states does not unmount the child or lose its internal state.
+
+```rust
+let scroll = window
+    .use_keyed_state("page-scroll", cx, |_, _| ScrollHandle::new())
+    .read(cx)
+    .clone();
+
+div().id("page").size_full().overflow_y_scroll().track_scroll(&scroll)
+    .child(Affix::new("page-top", toolbar, scroll.clone()).offset_top(px(0.)))
+    .child(long_content)
+```
+
+### StatusBar · Status Bar
+
+A compact information bar for the bottom of an application. Supports text items, arbitrary content, separators, and elastic spacing. **Controlled component** (no callbacks), **requires a unique ID**; its accessibility role is `Status`.
+
+- **Creation**: `StatusBar::new(id)`.
+- **Content**: `item(label)` adds text inheriting the bar's color and font size; `child(...)` / `children(...)` add arbitrary elements.
+- **Separators / spacing**: `separator()` adds a vertical divider; `spacer()` adds elastic space that pushes following items to the right.
+- **Visuals**: height, padding, font size, and colors are all derived from the active tokens by `theme::metric::status_bar_metric`.
+
+```rust
+StatusBar::new("editor-status")
+    .item("Ready")
+    .separator()
+    .item("Ln 1, Col 1")
+    .spacer()
+    .item("UTF-8")
+    .separator()
+    .item("Rust")
 ```
 
 ---
@@ -359,16 +473,51 @@ Breadcrumb::new(["Home", "Products", "Details"])
 An arbitrary trigger element + a dropdown action list. **Controlled component**, **requires a unique ID**.
 
 - **Creation**: `MenuItem::new(label)`; `DropdownMenu::new(id, trigger, items)`.
-- **MenuItem properties**: separators, `danger()` for destructive actions, `disabled()` for disabled items.
-- **MenuItem callback**: `on_click(&mut Window, &mut App)` (**2 arguments**).
-- **Behavior**: automatically dismisses after an action is clicked; see [1.4](#14-popup-positioning-mechanism-shared-convention) for popup positioning.
+- **MenuItem properties**: separators, `danger()` for destructive actions, `disabled()` for disabled items, and `submenu(label, items)` for recursive multilevel menus.
+- **MenuItem callback**: `on_click(&mut Window, &mut App)` (**2 arguments**); submenu parent items do not register their own action callback.
+- **Behavior**: hovering or clicking a submenu parent opens it to the right, recursive levels are supported, and it flips left near the right window edge. Actions dismiss the menu; see [1.4](#14-popup-positioning-mechanism-shared-convention) for popup positioning.
 
 ```rust
 let entity = cx.entity();
 DropdownMenu::new("more", Button::new("More"), vec![
-    MenuItem::new("Edit").on_click(move |_w, cx| { let _ = entity.update(cx, |this, cx| { … }); }),
+    MenuItem::submenu("Export", vec![
+        MenuItem::new("PNG").on_click({
+            let entity = entity.clone();
+            move |_w, cx| { let _ = entity.update(cx, |this, cx| { … }); }
+        }),
+        MenuItem::new("PDF"),
+    ]),
     MenuItem::new("Delete").danger(),
 ])
+```
+
+### MenuBar · Application Menu Bar
+
+A desktop-style top-level menu that reuses `MenuItem` submenus, danger items, and disabled items. **Controlled component**, **requires a unique ID**.
+
+- **Creation**: `MenuBarItem::new(id, label)`; pass `.children(vec![MenuItem…])` for a submenu, or omit children for a direct action button.
+- **MenuBarItem properties**: `icon(element)`, `disabled(bool)`, and `on_click(&mut Window, &mut App)`.
+- **MenuBar properties**: `open(Option<usize>)` controls the expanded top-level item, `selected(Option<usize>)` controls the selected item, and `menu_width(px)` sets the dropdown width.
+- **Callbacks**: `on_open_change(&Option<usize>, &mut Window, &mut App)`; `on_select(usize, &SharedString, &mut Window, &mut App)` receives the top-level index and action label.
+- **Behavior**: clicking a top-level item opens it; while a menu is open, hovering another top-level item switches directly; clicking outside or activating an action dismisses it; submenus open to the right and flip left near the right window edge.
+- **Keyboard / accessibility**: uses `Role::MenuBar` plus top-level `Role::Button` nodes with expanded / selected state; Left / Right wrap, Home / End jump, keyboard switching follows an open menu, and Esc dismisses it.
+- **Caveat**: write `open` and `selected` back in callbacks; submenu parents have no action callback, and actions fire from leaf items.
+
+```rust
+MenuBar::new("app-menu", vec![
+    MenuBarItem::new("file", "File").children(vec![
+        MenuItem::new("New"),
+        MenuItem::separator(),
+        MenuItem::new("Exit").danger(),
+    ]),
+    MenuBarItem::new("help", "Help"),
+])
+.open(self.open_menu)
+.selected(self.selected_menu)
+.on_open_change(cx.listener(|this, open, _, cx| {
+    this.open_menu = *open;
+    cx.notify();
+}))
 ```
 
 ### NavMenu · Navigation Menu
@@ -419,9 +568,9 @@ Steps::new(vec!["Fill in".into(), "Review".into(), "Complete".into()])
 Switches between tab pages. **Controlled component**.
 
 - **Creation**: `Tabs::new(items, active)` (`items` is a collection of tab labels; `active` is the current index).
-- **Properties**: underline indicator; `disabled_tabs(vec)`: disabled tabs; `closable()`: allow closing; `card()`: card style; `centered()`: centered.
-- **Callbacks**: `on_select(&usize)` (3 arguments; selected index); `on_close(&usize)` (3 arguments; closed index; requires `closable()`).
-- **Caveat**: the caller renders the content area based on `active` (Tabs only provides the tab bar).
+- **Properties**: underline indicator; `disabled_tabs(vec)`: disabled tabs; `closable()`: allow closing; `card()`: card style; `centered()`: centered; `scrollable()`: shows ‹ › scroll arrows on overflow and automatically reveals the active tab.
+- **Callbacks**: `on_select(&usize)` (3 arguments; selected index); `on_close(&usize)` (3 arguments; closed index; requires `closable()`); `on_add` (2 arguments; shows a "+" button).
+- **Caveat**: the caller renders the content area based on `active` (Tabs only provides the tab bar). `centered()` is ignored in `scrollable()` mode; antd's default "»" ellipsis dropdown is not implemented.
 
 ```rust
 Tabs::new(["Overview", "Details", "Settings"], self.tab)
@@ -435,7 +584,7 @@ Tabs::new(["Overview", "Details", "Settings"], self.tab)
 Wraps arbitrary content and opens a menu on right-click. **Wrapper**, **requires a unique ID**.
 
 - **Creation**: `ContextMenu::new(id: impl Into<ElementId>, items)`, then `.child(arbitrary content)`.
-- **Behavior**: opens the `MenuItem` menu at the cursor on right-click, clamped within the viewport so it does not extend beyond the window.
+- **Behavior**: opens the `MenuItem` menu at the cursor on right-click, clamped within the viewport; `MenuItem::submenu(...)` is also supported.
 - **MenuItem callback**: `on_click` (2 arguments).
 
 ```rust
@@ -528,6 +677,28 @@ Masking + plaintext toggle. **Entity**.
 - **Creation**: `cx.new(|cx| PasswordInput::new(cx))`.
 - **Capabilities**: masked display + a **custom-drawn eye icon** to toggle between plaintext and masking.
 - **Reading / writing**: the same as TextInput (`text()` returns the actual plaintext).
+
+### OtpInput · One-Time Password Input
+
+A single-focus, per-cell verification-code / PIN input. **Entity**.
+
+- **Creation**: `cx.new(|cx| OtpInput::new(cx, 6))`; length is clamped to 1–32.
+- **Properties**: `label(text)`, `placeholder(text)`, `mask(bool)`, `separator(bool)`, `variant(InputVariant)`, `status(InputStatus)`, `size(InputSize)`, `disabled(bool)`.
+- **Reading / writing**: `value()` / `set_value(s, cx)` / `clear(cx)`; `length()`, `active_index()`, `is_complete()`, `focus(window, cx)`.
+- **Keyboard / clipboard**: Left / Right / Home / End move the active cell; Backspace / Delete clear it; Ctrl / Cmd+V pastes a whole string from the active cell. Only Unicode letters and numbers are accepted.
+- **Callbacks**: `on_change(&str, &mut Window, &mut App)`; `on_complete(&str, &mut Window, &mut App)` fires only on the incomplete-to-complete transition. Programmatic `set_value` does not fire callbacks.
+- **a11y**: `Role::TextInput` exposes value / placeholder / disabled / invalid and supports SetValue.
+
+```rust
+code: cx.new(|cx| OtpInput::new(cx, 6)
+    .on_change(cx.listener(|this, value, _, cx| {
+        this.code = value.to_string();
+        cx.notify();
+    }))
+    .on_complete(cx.listener(|this, value, _, cx| {
+        this.verify(value, cx);
+    }))),
+```
 
 ### SearchInput · Search Input
 
@@ -887,17 +1058,30 @@ The most feature-rich display control. **Controlled component**, **requires a un
   - `pagination(page, page_size)` + `on_page_change()`: built-in pagination.
   - `row_detail(fn)` + `expanded_rows(vec)` + `on_expand()`: expandable rows.
   - `fixed_left()`: pin the first column + horizontal scrolling (**includes a horizontal Scrollbar**).
+  - `fixed_right_columns(n)`: pin the last n columns; combine with `fixed_left()` for a left / scrolling / right three-pane layout.
+  - `resizable_columns(true)` + `on_column_resize()`: drag header edges to resize; handles support Left/Right by 8px and enforce a 64px minimum.
+  - `filterable()` + `filter(query)` + `on_filter_change()`: case-insensitive substring filtering, applied before pagination.
+  - `editable_columns(vec)` + `editing(Option<(row, col)>)` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()`: controlled cell editing.
+  - `virtualized(px(viewport_height))` + `virtual_scroll_handle(handle)`: virtual scrolling (only visible rows are mounted, **uniform 37px row height**, includes a vertical Scrollbar).
   - Automatically displays an empty state when there is no data.
-- **Callbacks** (all 3 arguments; **all use global row indices**):
+- **Row-related callbacks** (all 3 arguments; **all use global row indices**):
   - `on_row_click(&usize)`
   - `on_sort(&(usize, bool))`: column index + whether ascending.
   - `on_selected_rows(&Vec<usize>)`
   - `on_page_change(&usize)`: new page number (starting at 1).
   - `on_expand(&usize)`
+- **DataGrid callbacks**:
+  - `on_column_resize(&Vec<Pixels>)`: full column-width snapshot; write it back through `column_widths()`.
+  - `on_filter_change(&str)`: filter text changed.
+  - `on_edit_start(&(usize, usize))` / `on_edit_end(&(usize, usize))`: editing started / ended.
+  - `on_cell_change(&((usize, usize), SharedString))`: committed cell value.
 - **Caveats**:
   - Pagination is controlled (page numbers start at 1); header Select All **applies only to the current page**.
-  - `fixed_left()` requires a uniform row height (37px); columns without an explicit width default to 120px.
-  - `fixed_left()` and `row_detail()` are **mutually exclusive**—if both are set, expandable rows do not work.
+  - Filtering runs before pagination; sorting / selection / expansion / editing callbacks still use **global row indices**.
+  - `fixed_left()` / `fixed_right_columns(n)` require a uniform row height (37px); columns without an explicit width default to 120px.
+  - `fixed_left()` / `fixed_right_columns(n)` and `row_detail()` are **mutually exclusive**—if both are set, expandable rows do not work.
+  - `resizable_columns(true)` requires `on_column_resize()` to write widths back. Double-click an editable cell, or focus it and press Enter/Space; press Enter or blur to commit.
+  - `virtualized()` falls back to full rendering when combined with `row_detail()` / `fixed_left()`, and paginates the mounted window when `pagination()` is set.
 
 ```rust
 Table::new("users", vec!["Name".into(), "Phone".into(), "Status".into()], rows)
@@ -910,6 +1094,8 @@ Table::new("users", vec!["Name".into(), "Phone".into(), "Status".into()], rows)
     .on_page_change(cx.listener(|this, p, _, cx| { self.page = *p; cx.notify(); }))
     .on_sort(cx.listener(|this, (col, asc), _, cx| { this.sort_by(*col, *asc); cx.notify(); }))
 ```
+
+See [`examples/data_grid.rs`](../examples/data_grid.rs) for the complete DataGrid interaction example.
 
 ### Tree · Tree
 
@@ -940,11 +1126,50 @@ Tree::new("org", nodes)
     .on_check(cx.listener(|this, ids, _, cx| { this.checked = ids.clone(); cx.notify(); }))
 ```
 
+### TreeTable · Hierarchical Table
+
+Table columns combined with hierarchical nodes. **Controlled component**, **requires a unique ID**. Node IDs must be unique within the same tree, and callbacks always use node IDs rather than visible row indices.
+
+- **Creation**: `TreeTableNode::new(id, cells)` (`cells` contains the row's column values; nest with `.child(node)` / `.children(nodes)`; `Clone`); `TreeTable::new(id, headers, nodes)`.
+- **Properties**:
+  - Controlled `expanded(Vec<SharedString>)` and `selected(Option<SharedString>)`.
+  - `checkable()` + `checked(Vec<SharedString>)`: parent-child checkbox synchronization; ancestors become checked when all children are checked and show a mixed state otherwise.
+  - `column_widths(Vec<Pixels>)`, `striped()`, `bordered()`, and `show_header(bool)`.
+  - `virtualized(height)`: fixed row height plus `uniform_list` virtualization; `virtual_scroll_handle(handle)` reuses an external scroll handle.
+- **Callbacks** (all 3 arguments): `on_toggle(&SharedString)`, `on_select(&SharedString)`, and `on_check(&Vec<SharedString>)`.
+- **Keyboard**: after focusing the table, ↑ / ↓ move, Home / End jump to the first / last row; ← collapses the current node or moves to its parent; → expands the current node or moves to its first child; Enter selects; Space toggles checking when checkboxes are enabled.
+- **Pure helpers**: `tree_table_visible_ids()`, `tree_table_toggle_expanded()`, `tree_table_navigation_target()`, `tree_table_check_state()`, and `tree_table_cascade_check()` can be used directly for host state management or matrix tests.
+- **Accessibility**: `Role::Table` for the container; `Role::ColumnHeader` for headers; table row/cell semantics; expand buttons expose `Role::Button` plus expanded state; checkboxes expose `Role::CheckBox` plus mixed state.
+- **Performance**: visible rows are flattened depth-first; virtual mode instantiates only visible rows. Row height is fixed, so cell text is single-line ellipsized.
+- **Caveat**: the first version does not include fixed left/right columns, column dragging, cell editing, or sorting; those belong to the P2 DataGrid expansion.
+
+```rust
+TreeTable::new("files-table", ["Name", "Size", "Status"], self.nodes.clone())
+    .expanded(self.expanded.clone())
+    .selected(self.selected.clone())
+    .checkable().checked(self.checked.clone())
+    .column_widths(vec![px(320.), px(120.), px(180.)])
+    .virtualized(px(480.))
+    .on_toggle(cx.listener(|this, id, _, cx| {
+        this.expanded = tree_table_toggle_expanded(&this.expanded, id);
+        cx.notify();
+    }))
+    .on_select(cx.listener(|this, id, _, cx| {
+        this.selected = Some(id.clone());
+        cx.notify();
+    }))
+    .on_check(cx.listener(|this, ids, _, cx| {
+        this.checked = ids.clone();
+        cx.notify();
+    }))
+```
+
 ### List · List
 
 A vertical list. **Controlled component** (no callbacks).
 
 - **Creation**: `ListItem::new(title)` (can set a description / avatar / `extra()` right-side element); `List::new(items)`.
+- **Virtual scrolling**: `List::virtualized(px(viewport_height), px(row_height), count, |ix| ListItem)` + `virtual_scroll_handle(handle)` mounts only visible rows; each row is built on demand by the factory, and header / footer stay fixed outside the viewport.
 - **Properties**: `header(el)` / `footer(el)`.
 
 ```rust
@@ -952,7 +1177,13 @@ List::new(vec![
     ListItem::new("Item one").description("Description text"),
     ListItem::new("Item two").extra(Button::new("Action")),
 ]).header(Text::new("List title").strong())
+
+List::virtualized(px(520.), px(56.), 10_000, |ix|
+    ListItem::new(format!("Session {ix:05}")).description("host-000.internal"))
+    .header(Text::new("Sessions").strong())
 ```
+
+> Virtual scrolling requires a **uniform row height**: padding for multi-line rows (description, avatar, separators) must fit within the row height you specify.
 
 ### Card · Card
 
@@ -1051,26 +1282,59 @@ Tag::new("Tag").color(TagColor::Blue)
 A status marker. **Controlled component** (no callbacks).
 
 - **Creation**: `Badge::new(label)`.
-- **Properties**: `info()` / `success()` / `warning()` / `danger()`; `color(c)`: custom color.
+- **Pill mode**: `info()` / `success()` / `warning()` / `danger()`; `color(c)` sets a custom color.
+- **Status-dot mode**: `status(BadgeStatus::{Default, Processing, Success, Error, Warning})` renders a token-colored dot plus text; `text()` updates the label.
+- **Tooltip and accessibility**: `title()` provides both a hover tooltip and an accessible description; `aria_label()` overrides the accessible name.
+- **Unique id**: pass distinct `id()` values when multiple badges use the same text.
+
+```rust
+Badge::new("Running").success()
+Badge::new("Processing")
+    .id("job-processing")
+    .status(BadgeStatus::Processing)
+    .title("The task is processing")
+    .aria_label("Task status: processing")
+```
 
 ### CountBadge · Count Badge
 
 Displays a count in the top-right corner of a child element. **Wrapper**.
 
 - **Creation**: `CountBadge::new(count: u32)`, then `.child(child element)`.
-- **Properties**: `max(n)`: display 99+ on overflow; `dot()`: red-dot mode; `show_zero()`; `color(c)`: custom background color; `offset(x, y)`: position offset.
+- **Properties**: `max(n)` displays 99+ on overflow; `dot()` enables red-dot mode; `show_zero()`; `color(c)` sets a custom background; `offset(x, y)` adjusts position.
+- **Size**: `size(BadgeSize::Small)` uses a compact 14px-high badge; the default remains 20px.
+- **Tooltip and accessibility**: `title()` adds a hover tooltip; `aria_label()` overrides the default "N messages" name.
 
 ```rust
 CountBadge::new(5).max(99).child(Avatar::new("Zhang San"))
+CountBadge::new(8)
+    .size(BadgeSize::Small)
+    .title("Compact count")
+    .aria_label("Eight unread messages")
+    .child(Avatar::new("Li Si"))
 ```
 
 ### Avatar · Avatar
 
-An avatar showing the first character of a name. **Controlled component** (no callbacks).
+An avatar showing the first character of a name or an image. **Controlled component**; drive the image failure state through `image_error()`.
 
 - **Creation**: `Avatar::new(name)`.
-- **Capabilities**: circular background + the first character of the name; the background color is determined by hashing the name.
-- **Properties**: `size(px)`; `square()`: rounded square.
+- **Capabilities**: circular background + the first character of the name, using the fixed `colorTextPlaceholder` background; `image(source)` is cropped with cover and falls back to the initial while loading or on failure.
+- **Properties**: `size(px)` sets a custom edge length and scales font size/line height; `square()` rounded square; `image_error(bool)` forces the failure fallback.
+- **Callback**: `on_image_error(&ImageCacheError, &mut Window, &mut App)`, suitable for driving controlled failure state.
+- **Unique ID**: pass distinct `id()` values for same-name avatars in one window to avoid element and accessibility ID collisions.
+
+```rust
+Avatar::new("Zhang San")
+    .id("user-42-avatar")
+    .size(px(48.))
+    .image(source)
+    .image_error(self.avatar_failed)
+    .on_image_error(cx.listener(|this, _error, _, cx| {
+        this.avatar_failed = true;
+        cx.notify();
+    }))
+```
 
 ### ImageView · Image
 
@@ -1337,21 +1601,83 @@ A backdrop + side-sliding panel. **Controlled component**.
 
 ### ToastStack · Toast Stack
 
-Lightweight toast messages in a top-right overlay. **Controlled component**.
+Lightweight toast messages in a top-center overlay. **Controlled component**; the caller owns the collection and lifecycle.
 
 - **Creation**: `ToastItem::new(message)` (four types: info/success/warning/error); `ToastStack::new(items)`.
-- **Properties**: items are controlled (`Vec<ToastItem>`).
-- **Callback**: `on_close(&usize)` (3 arguments; returns the index of the removed item).
-- **Caveat**: render outside the scroll container; the caller manages the item collection for automatic dismissal / manual removal.
+- **Stable identity**: `ToastItem::key(key)` produces element id `toast-{key}` and close-button id `toast-close-{key}`. Unkeyed controlled entries fall back to `index-{index}`, so list entries should always provide a business key.
+- **Properties**: items are controlled (`Vec<ToastItem>`); `duration()` / `pause_on_hover()` are consumed only by `ToastHost`. `ToastStack` does not run a timer.
+- **Callback**: prefer `on_dismiss(&ToastDismissed, &mut Window, &mut App)` (3 arguments). The event contains `key: Option<SharedString>`, the current `index`, and `by_timer`. Legacy `on_close(&usize)` remains available.
+- **Caveat**: render outside the scroll container; the caller manages the collection for automatic dismissal / manual removal. Use `ToastHost` for antd-style automatic expiry.
+
+### ToastHost · Self-managed Toasts
+
+Lightweight toast messages in a top-center overlay. **Entity component** that owns entries, absolute deadlines, hover pause, max-count, and one ticker.
+
+- **Creation**: `cx.new(|cx| ToastHost::new(cx).config(ToastConfig { max_count: 6, pause_on_hover: true }))`; mount `host.clone()` during render.
+- **Default TTLs**: `default_toast_duration(variant)` uses 3s for Info / Success, 4.5s for Warning, and 6s for Danger, matching antd Message.
+- **Entry API**: `show(item, cx)` uses the item or variant default; `show_with(item, duration, cx)` overrides it; `Duration::ZERO` means persistent. `ToastItem::pause_on_hover(bool)` overrides the global setting.
+- **Stable keys**: an explicit `key` wins; otherwise the host assigns `toast-{n}`. Showing the same key again updates it in place and restarts its timer.
+- **Count and order**: newest entries are inserted at the top; entries beyond `max_count` are dropped from the tail, preserving the remaining order.
+- **Callback**: `on_dismiss(&ToastDismissed, &mut App)` (2 arguments, no Window). Manual and timer dismissal both provide the stable key, current index, and `by_timer`.
+- **Control API**: `dismiss(&key, cx) -> bool`, `clear(cx)`, `len()`, and `is_empty()`.
+- **Performance**: at most one 50ms ticker per host. It runs only while an unpaused timer exists and exits after all entries expire or are cleared; there is no async task per notice.
+- **Caveat**: place it as the last child of the root view, outside the scroll container. `ToastHost` is an `Entity`; do not put it inside a controlled `ToastStack` entry list.
 
 ### NotificationStack · Notification Stack
 
 Notifications in a top-right overlay. **Controlled component**.
 
 - **Creation**: `NotificationItem::new(title)` (can set a description / type / `action()` button); `NotificationStack::new(items)`.
-- **Properties**: items are controlled.
-- **Callback**: `on_close(&usize)` (3 arguments).
-- **Caveat**: render outside the scroll container.
+- **Stable identity**: `NotificationItem::key(key)` produces element id `notification-{key}`, close-button id `notif-close-{key}`, and action-button id `notification-action-{key}`. Unkeyed entries fall back to `index-{index}`.
+- **Properties**: items are controlled; `duration()` / `pause_on_hover()` are consumed only by `NotificationHost`.
+- **Callback**: prefer `on_dismiss(&NotificationDismissed, &mut Window, &mut App)` (3 arguments). The event contains `key`, the current `index`, and `by_timer`. Legacy `on_close(&usize)` remains available.
+- **Caveat**: render outside the scroll container; the caller manages the collection for automatic dismissal / manual removal.
+
+### NotificationHost · Self-managed Notifications
+
+Notifications in a top-right overlay. **Entity component** that owns entries, expiry, hover pause, max-count, and one ticker.
+
+- **Creation**: `cx.new(|cx| NotificationHost::new(cx).config(NotificationConfig { max_count: 4, pause_on_hover: true }))`; mount `host.clone()` during render.
+- **Default TTL**: `default_notification_duration()` is 4.5s, matching antd Notification; `Duration::ZERO` means persistent.
+- **Entry API**: `show(item, cx)` / `show_with(item, duration, cx)`; `NotificationItem::pause_on_hover(bool)` overrides the global setting.
+- **Stable keys**: an explicit `key` wins; otherwise the host assigns `notification-{n}`. Showing the same key again updates it in place and restarts its timer.
+- **Count and order**: newest entries are inserted at the top; entries beyond `max_count` are dropped from the tail.
+- **Callback**: `on_dismiss(&NotificationDismissed, &mut App)` (2 arguments, no Window), distinguishing manual and timer dismissal.
+- **Control API**: `dismiss(&key, cx) -> bool`, `clear(cx)`, `len()`, and `is_empty()`.
+- **Performance and placement**: at most one 50ms ticker per host, exiting when no active timer remains; place it as the last child of the root view, outside the scroll container.
+
+### NotificationCenter · Notification Center
+
+A right-side notification-history overlay. **Controlled component**; the parent view owns the entries.
+
+- **Creation**: `NotificationCenter::new(id, items)`; `id` must be a stable, unique `ElementId` within the window.
+- **Properties**: `open(bool)`, `selected(Option<usize>)`, `title(text)`, `empty_text(text)`; an empty collection shows the empty state.
+- **Entry capabilities**: reuses `NotificationItem`, adding `.read(bool)`, `.set_read(bool)`, and `.timestamp(text)`; read them with `is_read()`, `timestamp_text()`, `description_text()`, `title()`, and `variant()`.
+- **Callbacks**: `on_select(&usize, &mut Window, &mut App)`, `on_read(&usize, &mut Window, &mut App)`, `on_remove(&usize, &mut Window, &mut App)`, `on_mark_all_read(&mut Window, &mut App)`, and `on_dismiss(&mut Window, &mut App)`. The last two have no event argument, so they cannot use `cx.listener` directly; capture a `cx.entity()` handle and update the parent inside the closure.
+- **Interaction**: clicking an entry selects it and, when unread, triggers `on_read`; ✕ removes it; the header can mark all as read or close the panel; ↑ / ↓ wrap, Home / End jump to the first / last entry, and Esc closes it.
+- **Performance**: fixed row height plus `uniform_list` virtualization; long histories instantiate only visible rows, and titles / descriptions are single-line ellipsized.
+- **Accessibility**: the panel uses `Role::Dialog`, rows use `Role::ListItem` with selected state, and remove / header actions use `Role::Button`.
+- **Caveat**: render as the last child of the root view, outside the scroll container; the caller redraws after changing the collection.
+
+```rust
+NotificationCenter::new("inbox-center", self.items.clone())
+    .open(self.center_open)
+    .selected(self.selected)
+    .on_select(cx.listener(|this, index, _, cx| {
+        this.selected = Some(*index);
+        cx.notify();
+    }))
+    .on_read(cx.listener(|this, index, _, cx| {
+        if let Some(item) = this.items.get_mut(*index) {
+            item.set_read(true);
+            cx.notify();
+        }
+    }))
+    .on_remove(cx.listener(|this, index, _, cx| {
+        this.items.remove(*index);
+        cx.notify();
+    }))
+```
 
 ### Popconfirm · Popconfirm
 
@@ -1519,7 +1845,7 @@ A conversation suite comparable to antd X: conversation switching, prompts, mess
 
 ## X. Advanced and Host Modules
 
-All 8 modules below are public through `pub mod` / `pub use` in `src/lib.rs`. They are documented separately: **they are not folded into the 98 documented controls / 101 entries, and the total is not presented as 106**.
+All 8 modules below are public through `pub mod` / `pub use` in `src/lib.rs`. They are documented separately: **they are not folded into the 103 documented controls / 106 entries, and the total is not presented as 107**.
 
 ### HotkeyInput · Hotkey Recorder
 
@@ -1547,6 +1873,56 @@ let binding = hotkey.read(cx).binding().to_owned(); // "ctrl-shift-k"
 ```
 
 - **Caveats**: `value()` and `binding()` use different formats; register shortcuts with the latter. `Esc` cancels and preserves the previous value; Backspace / Delete clears the value and fires the callback. Losing focus ends recording. `require_modifier(true)` requires Ctrl / Alt / the platform key; a bare key or Shift alone does not qualify. No `bind_keys` call is needed. Use stable, unique ids for multiple instances in one window.
+
+### DiffView · Line-level Code Diff
+
+- **Purpose**: Compares two text snapshots and displays added, removed, and unchanged lines in unified or side-by-side form. Suitable for release notes, patch previews, and configuration review.
+- **State model**: Stateless `RenderOnce`; the host passes old text, new text, and display mode on each render.
+- **Creation**: `DiffView::new(old: impl Into<SharedString>, new: impl Into<SharedString>) -> Self`.
+- **Properties**: `id(...)` sets a stable unique id; `title(...)` customizes the heading; `mode(DiffMode::{Split, Unified})` selects side-by-side or unified layout; `line_numbers(bool)` controls line numbers, enabled by default.
+- **Pure helpers**: `diff_lines(&str, &str) -> Vec<DiffLine>` returns a shortest line-level edit script. Each `DiffLine` contains `DiffKind::{Equal, Added, Removed}`, one-based `old_line` / `new_line`, and text. `diff_stats(&[DiffLine]) -> DiffStats` counts additions and removals.
+- **Algorithm**: Strips common prefixes and suffixes before running Myers' shortest edit path. Completely disjoint inputs produce a direct replacement, avoiding a needless quadratic trace. Comparison uses `str::lines()`; a trailing newline is not represented as a separate changed line.
+- **Minimal example**:
+
+```rust
+use gpui_widgets::{DiffMode, DiffView, diff_lines, diff_stats};
+
+let old = "let value = 1;\nprintln!(\"{value}\");";
+let new = "let value = 2;\nprintln!(\"{value}\");";
+let lines = diff_lines(old, new);
+let stats = diff_stats(&lines); // added: 1, removed: 1
+
+DiffView::new(old, new)
+    .id("value-diff")
+    .title("main.rs")
+    .mode(DiffMode::Split)
+```
+
+- **Caveats**: Long lines are horizontally clipped inside their cells rather than wrapped. Colors follow the theme's success / danger tokens. The view renders every diff row; hosts should chunk or paginate very large files. Multiple instances in one window require unique ids.
+
+### MarkdownEditor · Markdown Source Editor and Preview
+
+- **Purpose**: Combines `TextArea` source editing with the existing `Markdown` renderer for live preview. It is not a WYSIWYG editor.
+- **State model**: Controlled `RenderOnce`. The host owns the source string; id-scoped keyed state retains the `Entity<TextArea>`. User edits fire `on_change` and the host passes the updated value back. External text changes are synchronized silently without firing `on_change` in reverse.
+- **Creation**: `MarkdownEditor::new(text: impl Into<SharedString>) -> Self`.
+- **Properties**: `id(...)`; `title(...)`; `placeholder(...)`; `mode(MarkdownEditorMode::{Split, Editor, Preview})`; `height(Pixels)` sets the visible source and preview height.
+- **Callbacks**: `on_change(Fn(&str, &mut Window, &mut App))` receives the complete source.
+- **Prerequisite**: Call `text_area::bind_keys(cx)` at application startup for Enter, Tab / Shift+Tab, navigation, selection, clipboard, undo, and redo shortcuts.
+- **Minimal example**:
+
+```rust
+use gpui_widgets::{MarkdownEditor, MarkdownEditorMode};
+
+MarkdownEditor::new(self.markdown.clone())
+    .id("article-editor")
+    .mode(MarkdownEditorMode::Split)
+    .on_change(cx.listener(|this, text: &str, _, cx| {
+        this.markdown = text.to_string();
+        cx.notify();
+    }))
+```
+
+- **Caveats**: The initial caret starts at the beginning of the source. The source pane uses line numbers and a monospace font. Preview syntax exactly matches `Markdown`; images, raw HTML, footnotes, and other full-GFM features remain unsupported. Multiple editors in one window require unique ids.
 
 ### Markdown · Markdown Rendering
 
@@ -1752,13 +2128,20 @@ TitleBar::new("My App")
 | Anchor | `on_click` | `&SharedString` | 3 |
 | Breadcrumb | `on_click` | `&usize` | 3 |
 | MenuItem (DropdownMenu/ContextMenu) | `on_click` | — | 2 |
+| MenuBar | `on_open_change` | `&Option<usize>` | 3 |
+| MenuBar | `on_select` | `usize` + `&SharedString` | Special |
+| MenuBarItem | `on_click` | — | 2 |
+| Toolbar | `on_action` | `&SharedString` | 3 |
+| ToolbarItem | `on_click` | — | 2 |
 | NavMenu | `on_select` / `on_toggle` | `&SharedString` | 3 |
 | Pagination | `on_change` | `&usize` | 3 |
 | Tabs | `on_select` / `on_close` | `&usize` | 3 |
+| Tabs | `on_add` | — | 2 |
 | FloatButton | `on_click` | — | 2 |
 | CommandPalette | `on_select` | `&SharedString` | 3 |
 | Splitter | `on_change` | `&f32` | 3 |
 | SearchInput | `on_change` / `on_search` | `&str` | 3 |
+| OtpInput | `on_change` / `on_complete` | `&str` | 3 |
 | NumberInput | `on_change` | `Option<f64>` (**by value**) | 3 |
 | Stepper | `on_change` | `&f32` | 3 |
 | TagInput | `on_change` | `&Vec<SharedString>` | 3 |
@@ -1790,6 +2173,8 @@ TitleBar::new("My App")
 | Tree | `on_toggle` / `on_select` | `&SharedString` | 3 |
 | Tree | `on_check` | `&Vec<SharedString>` | 3 |
 | Tree | `on_drop_node` | `&TreeDrop` | 3 |
+| TreeTable | `on_toggle` / `on_select` | `&SharedString` | 3 |
+| TreeTable | `on_check` | `&Vec<SharedString>` | 3 |
 | Countdown | `on_finish` | — (no Window) | 1 |
 | Calendar | `on_month_change` / `on_select` / `on_mode_change` | `&(i32,u32)` / `&Date` / `&CalendarMode` | 3 |
 | Tag | `on_close` | `&ClickEvent` | 3 |
@@ -1801,7 +2186,11 @@ TitleBar::new("My App")
 | Tour | `on_close` | — | 2 |
 | Alert | `on_close` | — | 2 |
 | Modal / Drawer | `on_close` | — | 2 |
-| ToastStack / NotificationStack | `on_close` | `&usize` | 3 |
+| ToastStack / NotificationStack | `on_dismiss` | `&ToastDismissed` / `&NotificationDismissed` | 3 |
+| ToastStack / NotificationStack | `on_close` (legacy) | `&usize` | 3 |
+| ToastHost / NotificationHost | `on_dismiss` | `&ToastDismissed` / `&NotificationDismissed` (no Window) | 2 |
+| NotificationCenter | `on_select` / `on_read` / `on_remove` | `&usize` | 3 |
+| NotificationCenter | `on_mark_all_read` / `on_dismiss` | — | 2 |
 | Popconfirm | `on_open_change` | `&bool` | 3 |
 | Popconfirm | `on_confirm` / `on_cancel` | — | 2 |
 | HotkeyInput | `on_change` | `&str` | 3 |
@@ -1834,6 +2223,7 @@ These controls are **created once with `cx.new(|cx| T::new(cx))`**, attached wit
 | TextInput | `TextInput::new(cx)` | `text()` / `set_text(s, window, cx)` |
 | TextArea | `TextArea::new(cx)` | Same as TextInput |
 | PasswordInput | `PasswordInput::new(cx)` | Same as TextInput |
+| OtpInput | `OtpInput::new(cx, length)` | `value()` / `set_value(s, cx)` / `clear(cx)` / `is_complete()` |
 | SearchInput | `SearchInput::new(cx)` | Same as TextInput |
 | Autocomplete | `Autocomplete::new(cx, items)` | Same as TextInput |
 | Mentions | `Mentions::new(cx)` | Same as TextInput |
@@ -1842,6 +2232,8 @@ These controls are **created once with `cx.new(|cx| T::new(cx))`**, attached wit
 | CommandPalette | `CommandPalette::new(cx, items)` | `open(window, cx)` / `close(cx)` |
 | VideoPlayer (Windows only) | `VideoPlayer::new(cx, path)` | `play/pause/toggle/seek`, `position()/duration()/is_playing()` |
 | Countdown | `Countdown::new(unix, cx)` / `after(Duration, cx)` | `remaining()` / `finished()` |
+| ToastHost | `ToastHost::new(cx)` | `show` / `show_with` / `dismiss` / `clear` / `len` / `is_empty` |
+| NotificationHost | `NotificationHost::new(cx)` | `show` / `show_with` / `dismiss` / `clear` / `len` / `is_empty` |
 | Sender | `Sender::new(cx).on_send(…)` | Internal TextArea; `on_send` returns the text |
 | FpsMeter | `FpsMeter::new(cx)` | `fps()` / `frame_ms()` / `start/stop` |
 | HotkeyInput | `HotkeyInput::new(cx)` | `value()` / `binding()` / `set_binding` / `clear` / recording controls |
@@ -1855,7 +2247,7 @@ These controls are **created once with `cx.new(|cx| T::new(cx))`**, attached wit
 
 Multiple instances in the same window must have unique IDs (hover / drag / keyed state is determined by `ElementId`):
 
-`Slider` `Splitter` `Scrollbar` `Select` `MultiSelect` `Cascader` `TreeSelect` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `UploadList` `Table` `Tree` `Calendar` `Carousel` `Accordion` `Popover` `Popconfirm` `ContextMenu` `DropdownMenu` `NavMenu` `Pagination` `FloatButton` `Rating` `Stepper` `HotkeyInput` `TransferManager` `Terminal` `CommandBar` `DropZone` `TitleBar`
+`Slider` `Splitter` `Scrollbar` `Affix` `StatusBar` `Toolbar` `Select` `MultiSelect` `Cascader` `TreeSelect` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `UploadList` `Table` `TreeTable` `Tree` `Calendar` `Carousel` `Accordion` `Popover` `Popconfirm` `ContextMenu` `DropdownMenu` `MenuBar` `NavMenu` `Pagination` `FloatButton` `Rating` `Stepper` `OtpInput` `NotificationCenter` `HotkeyInput` `TransferManager` `Terminal` `CommandBar` `DropZone` `TitleBar`
 
 > `Upload::new()` uses the default ID `"upload-area"`. Multiple Upload instances must be distinguished with `.id(…)`, or their hover state will interfere.
 
@@ -1874,10 +2266,13 @@ A: They belong to the **2-argument family** (no event argument). Use a `cx.entit
 A: Their IDs are duplicated. Use a unique ID for every instance in the same window (build it from the index / business key in lists).
 
 **Q: Are Modal / Drawer clipped by the scroll container or positioned incorrectly?**
-A: They must be rendered **outside the scroll container** (as the last child of the root view). The same applies to ToastStack / NotificationStack / Tour / CommandPalette.
+A: They must be rendered **outside the scroll container** (as the last child of the root view). The same applies to ToastStack / ToastHost / NotificationStack / NotificationHost / NotificationCenter / Tour / CommandPalette.
 
 **Q: Does the Scrollbar thumb not move / not respond to the scroll wheel?**
 A: The `ScrollHandle` is not persisted across frames, or the scroll container lacks `.track_scroll(&handle)`. Both must share the same handle (store it in a view field or `window.use_keyed_state`).
+
+**Q: Does Affix fail to pin, or does its position jump?**
+A: Make sure Affix and the scroll container use the same persistent `ScrollHandle`, and that the scroll container has `.id(...)`, `.overflow_y_scroll()`, and `.track_scroll(&handle)`. Keep Affix's placeholder in the original document flow; do not wrap it in another container that clips or changes positioning.
 
 **Q: Does `TextInput::new(cx)` fail to compile in render?**
 A: Its `cx` is a `Context<TextInput>`, so it can only be called inside a `cx.new(|cx| …)` closure; you cannot call `new` directly in the parent view's render / partition methods.
@@ -1892,7 +2287,7 @@ A: The if/else branch types must match. `Pixels / Pixels = f32`, so both branche
 A: The capacity limit is 134 bytes (approximately 44 UTF-8 Chinese characters), and longer content is truncated. It is suitable for short text / URLs.
 
 **Q: Do expandable rows stop working after enabling `fixed_left()` on Table?**
-A: `fixed_left()` and `row_detail()` are mutually exclusive; if both are set, expandable rows are disabled.
+A: `fixed_left()` / `fixed_right_columns(n)` and `row_detail()` are mutually exclusive; if both are set, expandable rows are disabled.
 
 **Q: Does Calendar month navigation / view switching do nothing?**
 A: Calendar is fully controlled. Handle and write back state for all three callbacks: `on_month_change` / `on_select` / `on_mode_change`.

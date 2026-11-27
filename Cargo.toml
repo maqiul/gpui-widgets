@@ -1,6 +1,6 @@
 [package]
 name = "gpui-widgets"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "General-purpose widgets built on GPUI (Zed's GPU-accelerated UI framework)"
 license = "Apache-2.0"
@@ -96,7 +96,15 @@ name = "avatar_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
+name = "avatar_image_demo"
+doc-scrape-examples = false
+
+[[example]]
 name = "badge_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "badge_status_demo"
 doc-scrape-examples = false
 
 [[example]]
@@ -144,11 +152,23 @@ name = "descriptions_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
+name = "toast_host_demo"
+doc-scrape-examples = false
+
+[[example]]
+name = "diff_markdown_demo"
+doc-scrape-examples = false
+
+[[example]]
 name = "divider_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
 name = "drawer_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "dropdown_submenu"
 doc-scrape-examples = false
 
 [[example]]
@@ -216,6 +236,10 @@ name = "minimal"
 doc-scrape-examples = false
 
 [[example]]
+name = "menu_bar_toolbar"
+doc-scrape-examples = false
+
+[[example]]
 name = "modal_panel_shot"
 doc-scrape-examples = false
 
@@ -228,11 +252,19 @@ name = "navmenu_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
+name = "notification_center"
+doc-scrape-examples = false
+
+[[example]]
 name = "notification_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
 name = "number_input_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "otp_input"
 doc-scrape-examples = false
 
 [[example]]
@@ -316,6 +348,10 @@ name = "statistic_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
+name = "statusbar_flex_affix"
+doc-scrape-examples = false
+
+[[example]]
 name = "steps_panel_shot"
 doc-scrape-examples = false
 
@@ -328,7 +364,19 @@ name = "table_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
+name = "data_grid"
+doc-scrape-examples = false
+
+[[example]]
+name = "tree_table"
+doc-scrape-examples = false
+
+[[example]]
 name = "tabs_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "tabs_overflow"
 doc-scrape-examples = false
 
 [[example]]
@@ -376,7 +424,15 @@ name = "treeselect_panel_shot"
 doc-scrape-examples = false
 
 [[example]]
+name = "typography_interactive_demo"
+doc-scrape-examples = false
+
+[[example]]
 name = "typography_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "virtual_scroll"
 doc-scrape-examples = false
 
 [[example]]

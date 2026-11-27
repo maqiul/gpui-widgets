@@ -155,19 +155,23 @@ Two frequent compilation errors:
   `disabled()/readonly()/error()/allow_clear()/max_length()/prefix()/suffix()`; Select
   `value(Option<usize>)/allow_clear()/searchable()`; Checkbox `indeterminate()`; Switch `small()/loading()`;
   Table `column_widths()/sortable()+sort()+on_sort()/selectable()+selected_rows()+on_selected_rows()` (empty data automatically shows an empty state);
-  Tabs `disabled_tabs()/closable()+on_close()/card()`; Tag `color(TagColor)/bordered()`; Badge/CountBadge `color()`
-  (CountBadge also has `offset(x, y)`); Modal `width()/closable()/mask_closable()`; Drawer
+  Tabs `disabled_tabs()/closable()+on_close()/card()`; Tag `color(TagColor)/bordered()`; Badge
+  `status(BadgeStatus)/text()/title()/aria_label()`, while CountBadge also has `size(BadgeSize)/title()/aria_label()/offset(x, y)`; Modal `width()/closable()/mask_closable()`; Drawer
   `placement(DrawerPlacement::Left)/closable()/mask_closable()`; DatePicker `disabled()/allow_clear()+on_clear()`;
   Slider `vertical()/marks([(value, label)])`; Spinner `color()`. Sorting, multiple selection, and similar features all use controlled mode; write state back in callbacks and call `cx.notify()`.
 - **Advanced feature properties**: Table `pagination(page, page_size)+on_page_change()`, `row_detail()+expanded_rows()+on_expand()`,
-  `fixed_left()`; Tree `checkable()+checked()+on_check()`, `draggable()+on_drop_node(&TreeDrop)`;
+  `fixed_left()/fixed_right_columns(n)`, `resizable_columns(true)+on_column_resize()`,
+  `filterable()+filter()+on_filter_change()`, and `editable_columns()+editing()+on_edit_start()/on_cell_change()/on_edit_end()`;
+  Tree `checkable()+checked()+on_check()`, `draggable()+on_drop_node(&TreeDrop)`;
+  TreeTable controls the expanded / selected / checked sets and provides fixed-row-height `virtualized(height)` scrolling;
   FormItem `label_width()` (horizontal labels) / `error_opt()`; newer widgets `Form` (`inline()/gap()`),
   `Rule` + `validate()`, `DateRangePicker`. See "Advanced Feature Controlled Conventions" below for details.
 - **Additional property-alignment extensions**: Button `round()/circle()`; Steps `vertical()/small()/progress_dot()/descriptions()`;
   Pagination `simple()/small()`; Tabs `centered()`; Segmented `small()/large()/block()`;
   Switch `text(on, off)`; Timeline `alternate()/pending()`; Descriptions `vertical()`;
   Table `bordered()/show_header(bool)`; ProgressBar `steps(n)`; Alert `banner()`; Spinner `tip()`;
-  Avatar `square()`; Card `hoverable()`. These are display-only properties and do not change the controlled-state conventions.
+  Avatar `image()/image_error()/on_image_error()` provide controlled image-failure state, and `size()` scales text; Card `hoverable()`.
+  Display-only properties such as `square()` do not change the controlled-state conventions.
 - **Overlay rendering location**: place Modal / Drawer / ToastStack / NotificationStack / Tour as the **last child of the root view, outside scroll containers** (they are internally deferred to the top); otherwise, they may be clipped by scrolling or fail to cover the content.
 - **Unique IDs**: widgets whose constructors accept an ID (Slider / Splitter / ContextMenu / Carousel / NavMenu /
   Cascader / TimePicker / TreeSelect / Transfer / Popconfirm, etc.) must not reuse the same ID within one window.
@@ -210,7 +214,7 @@ After switching themes, call `cx.refresh_windows()` yourself (or `cx.notify()` i
 
 ### Advanced Feature Controlled Conventions (Table / Form / Tree / DateRangePicker)
 
-**Table pagination / expandable rows / fixed left columns**:
+**Table pagination / expandable rows / fixed columns / DataGrid capabilities**:
 
 ```rust
 Table::new("members", ["Name", "City"], rows)
@@ -222,9 +226,11 @@ Table::new("members", ["Name", "City"], rows)
 ```
 
 - After pagination, sorting / selection / expansion / row-click callbacks still use **global row indices**; Select All in the header applies only to the current page.
-- `fixed_left()` fixes the first data column (including the checkbox column), while the remaining columns scroll horizontally; it requires a uniform row height of 37px,
-  and columns without an explicit width default to 120px; it is **mutually exclusive with `row_detail()`** (when both are set, expandable rows have no effect);
+- `fixed_left()` fixes the first data column (including the checkbox column), `fixed_right_columns(n)` fixes the last n columns, and the remaining columns scroll horizontally;
+  this requires a uniform row height of 37px, columns without an explicit width default to 120px, and it is **mutually exclusive with `row_detail()`** (when both are set, expandable rows have no effect);
   a theme-styled horizontal scrollbar is built in below the right pane (thumb dragging / track-click jumping / mouse wheel; see the Scrollbar section).
+- DataGrid P2: `filterable()` performs case-insensitive filtering before pagination; `resizable_columns(true)` requires `on_column_resize()` to write the full width snapshot back;
+  `editable_columns()` + `editing()` control the editable cell. Double-click or focus a cell and press Enter/Space to edit, then press Enter or blur to commit. See `examples/data_grid.rs` for the complete example.
 
 **Form validation (controlled helper; widgets do not hold validation state)**:
 
@@ -636,6 +642,8 @@ cd d:\gpui\widgets
 cargo run --example integration   # Complete example from this guide
 cargo run --example minimal       # Minimal-dependency example
 cargo run --example gallery       # Showcase of all 98 widgets (9-category navigation on the left)
+cargo run --example tree_table    # Hierarchical table, cascading checks, keyboard navigation, and virtual scrolling
+cargo run --example data_grid     # Table filtering, column resizing, fixed columns, and cell editing
 ```
 
 For an external standalone project, see `d:\gpui\consumer-demo` (depends only on a `gpui-widgets` path reference and has passed regression verification).

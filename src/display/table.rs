@@ -1,15 +1,17 @@
 //! 数据表格：表头 + 文本行，支持斑马纹 / 行选中 / 排序 / 多选 / 分页 / 展开行 / 固定左列 / 全网格边框。
 
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use gpui::{
-    AnyElement, App, CursorStyle, Div, ElementId, Entity, IntoElement, Pixels, RenderOnce, Role,
-    ScrollHandle, SharedString, Stateful, StatefulInteractiveElement, Toggled, Window, div,
-    prelude::*, px,
+    AnyElement, App, CursorStyle, Div, ElementId, Entity, FocusHandle, Focusable, IntoElement,
+    MouseButton, Pixels, RenderOnce, Role, ScrollHandle, SharedString, Stateful,
+    StatefulInteractiveElement, Toggled, UniformListScrollHandle, Window, div, prelude::*, px,
+    uniform_list,
 };
 
 use crate::{
     a11y::{self, Semantics},
+    input::text_input::TextInput,
     pagination::Pagination,
     scrollbar::Scrollbar,
     theme::{
@@ -66,6 +68,51 @@ fn row_selected_bg() -> gpui::Hsla {
     theme::with(|t| table_style(t).row_selected_bg)
 }
 
+/// 按不区分大小写的子串筛选行，返回原始行下标。
+pub fn table_filtered_indices(rows: &[Vec<SharedString>], query: &str) -> Vec<usize> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return (0..rows.len()).collect();
+    }
+    rows.iter()
+        .enumerate()
+        .filter(|(_, row)| row.iter().any(|cell| cell.to_lowercase().contains(&query)))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// 按像素增量调整一列宽度，并限制到最小宽度。
+pub fn table_resize_column(
+    widths: &[Pixels],
+    column: usize,
+    delta: f32,
+    min_width: f32,
+) -> Vec<Pixels> {
+    let mut next = widths.to_vec();
+    if let Some(width) = next.get_mut(column) {
+        *width = px((f32::from(*width) + delta).max(min_width));
+    }
+    next
+}
+
+/// 返回固定布局的左列数、中间滚动列数、右列数。
+pub fn table_fixed_column_ranges(
+    columns: usize,
+    fixed_left: bool,
+    fixed_right: usize,
+) -> (usize, usize, usize) {
+    let left = usize::from(fixed_left).min(columns);
+    let right = fixed_right.min(columns.saturating_sub(left));
+    (left, columns - left - right, right)
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ColumnDrag {
+    column: usize,
+    start_x: f32,
+    start_width: f32,
+}
+
 /// 数据表格（单元格为文本）。
 ///
 /// ```ignore
@@ -93,14 +140,34 @@ pub struct Table {
     expanded_rows: Vec<usize>,
     row_detail: Option<Rc<dyn Fn(usize) -> AnyElement>>,
     fixed_left: bool,
+    fixed_right: usize,
     bordered: bool,
     range_select: bool,
     show_header: bool,
+    filter: SharedString,
+    filterable: bool,
+    resizable_columns: bool,
+    editable_columns: Vec<usize>,
+    editing: Option<(usize, usize)>,
+    /// 虚拟滚动视口高度；`None` 走全量渲染
+    virtualized: Option<Pixels>,
+    /// 虚拟滚动的跨帧滚动句柄（不传时按 id 存进 window 状态）
+    virtual_scroll: Option<UniformListScrollHandle>,
     on_row_click: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
     on_sort: Option<Rc<dyn Fn(&(usize, bool), &mut Window, &mut App)>>,
     on_selected_rows: Option<Rc<dyn Fn(&Vec<usize>, &mut Window, &mut App)>>,
     on_page_change: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
     on_expand: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
+    on_filter_change: Option<Rc<dyn Fn(&str, &mut Window, &mut App)>>,
+    on_column_resize: Option<Rc<dyn Fn(&Vec<Pixels>, &mut Window, &mut App)>>,
+    on_edit_start: Option<Rc<dyn Fn(&(usize, usize), &mut Window, &mut App)>>,
+    on_cell_change: Option<Rc<dyn Fn(&((usize, usize), SharedString), &mut Window, &mut App)>>,
+    on_edit_end: Option<Rc<dyn Fn(&(usize, usize), &mut Window, &mut App)>>,
+    resolved_widths: Vec<Pixels>,
+    resize_drag: Option<Entity<Option<ColumnDrag>>>,
+    filter_input: Option<Entity<TextInput>>,
+    edit_input: Option<Entity<TextInput>>,
+    editable_focus: HashMap<(usize, usize), FocusHandle>,
 }
 
 impl Table {
@@ -124,14 +191,32 @@ impl Table {
             expanded_rows: Vec::new(),
             row_detail: None,
             fixed_left: false,
+            fixed_right: 0,
             bordered: false,
             range_select: false,
             show_header: true,
+            filter: SharedString::default(),
+            filterable: false,
+            resizable_columns: false,
+            editable_columns: Vec::new(),
+            editing: None,
+            virtualized: None,
+            virtual_scroll: None,
             on_row_click: None,
             on_sort: None,
             on_selected_rows: None,
             on_page_change: None,
             on_expand: None,
+            on_filter_change: None,
+            on_column_resize: None,
+            on_edit_start: None,
+            on_cell_change: None,
+            on_edit_end: None,
+            resolved_widths: Vec::new(),
+            resize_drag: None,
+            filter_input: None,
+            edit_input: None,
+            editable_focus: HashMap::new(),
         }
     }
 
@@ -239,6 +324,81 @@ impl Table {
         self
     }
 
+    /// 固定末尾若干数据列；可与 `fixed_left()` 组合，中间列横向滚动。
+    pub fn fixed_right_columns(mut self, columns: usize) -> Self {
+        self.fixed_right = columns;
+        self
+    }
+
+    /// 开启表头列宽拖拽；拖拽结果通过 `on_column_resize` 回传。
+    pub fn resizable_columns(mut self, resizable: bool) -> Self {
+        self.resizable_columns = resizable;
+        self
+    }
+
+    pub fn on_column_resize(
+        mut self,
+        listener: impl Fn(&Vec<Pixels>, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_column_resize = Some(Rc::new(listener));
+        self
+    }
+
+    /// 开启筛选栏；`filter` 为受控查询词，匹配所有单元格文本。
+    pub fn filterable(mut self, filterable: bool) -> Self {
+        self.filterable = filterable;
+        self
+    }
+
+    pub fn filter(mut self, filter: impl Into<SharedString>) -> Self {
+        self.filter = filter.into();
+        self
+    }
+
+    pub fn on_filter_change(
+        mut self,
+        listener: impl Fn(&str, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_filter_change = Some(Rc::new(listener));
+        self
+    }
+
+    /// 可编辑列下标集合；双击单元格（或键盘激活）进入编辑。
+    pub fn editable_columns(mut self, columns: Vec<usize>) -> Self {
+        self.editable_columns = columns;
+        self
+    }
+
+    /// 当前编辑单元格（全局行下标, 列下标），受控。
+    pub fn editing(mut self, cell: Option<(usize, usize)>) -> Self {
+        self.editing = cell;
+        self
+    }
+
+    pub fn on_edit_start(
+        mut self,
+        listener: impl Fn(&(usize, usize), &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_edit_start = Some(Rc::new(listener));
+        self
+    }
+
+    pub fn on_cell_change(
+        mut self,
+        listener: impl Fn(&((usize, usize), SharedString), &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_cell_change = Some(Rc::new(listener));
+        self
+    }
+
+    pub fn on_edit_end(
+        mut self,
+        listener: impl Fn(&(usize, usize), &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_edit_end = Some(Rc::new(listener));
+        self
+    }
+
     /// 全网格边框：列与列之间显示竖向分隔线
     pub fn bordered(mut self) -> Self {
         self.bordered = true;
@@ -257,33 +417,188 @@ impl Table {
         self.show_header = show;
         self
     }
+
+    /// 虚拟滚动：只渲染视口内（含少量预渲染）的行，适合万级数据。
+    /// `height` 是表体视口高度（不含表头/分页栏）。
+    ///
+    /// 行高统一为单元格单行高度，因此与 `row_detail()` / `fixed_left()` 不兼容；
+    /// 这两个选项同时存在时本方法不生效，仍走全量渲染。
+    pub fn virtualized(mut self, height: impl Into<Pixels>) -> Self {
+        self.virtualized = Some(height.into());
+        self
+    }
+
+    /// 复用外部滚动句柄（可选）：可据此做回到顶部、滚到某行等控制。
+    pub fn virtual_scroll_handle(mut self, handle: UniformListScrollHandle) -> Self {
+        self.virtual_scroll = Some(handle);
+        self
+    }
 }
 
 impl RenderOnce for Table {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let cols = self.headers.len().max(1);
-        let expandable = self.row_detail.is_some() && !self.fixed_left;
-        let total = self.rows.len();
+        let mut this = self;
+        let cols = this.headers.len().max(1);
+        let fixed_layout = this.fixed_left || this.fixed_right > 0;
+        let expandable = this.row_detail.is_some() && !fixed_layout;
+        let table_id = format!("{:?}", this.id);
+
+        if this.resizable_columns || fixed_layout {
+            this.resolved_widths = (0..cols)
+                .map(|col| {
+                    this.widths
+                        .as_ref()
+                        .and_then(|widths| widths.get(col))
+                        .copied()
+                        .unwrap_or(px(default_col_width()))
+                })
+                .collect();
+        }
+
+        let resize_drag = if this.resizable_columns && this.on_column_resize.is_some() {
+            Some(window.use_keyed_state(
+                ElementId::Name(format!("{table_id}-column-drag").into()),
+                cx,
+                |_, _| None::<ColumnDrag>,
+            ))
+        } else {
+            None
+        };
+        this.resize_drag = resize_drag;
+
+        let filter_input = if this.filterable {
+            let on_filter_change = this.on_filter_change.clone();
+            let initial = this.filter.clone();
+            let filter_a11y_id = format!("{table_id}-filter-a11y");
+            let input = window
+                .use_keyed_state(
+                    ElementId::Name(format!("{table_id}-filter-input").into()),
+                    cx,
+                    move |_, cx| {
+                        cx.new(move |cx| {
+                            let mut input = TextInput::new(cx).bare(true).placeholder("筛选表格");
+                            input.set_a11y_semantics(
+                                Semantics::new(Role::TextInput, "筛选表格").id(filter_a11y_id),
+                            );
+                            if let Some(on_filter_change) = on_filter_change.clone() {
+                                input = input.on_change(move |text, window, cx| {
+                                    on_filter_change(text, window, cx)
+                                });
+                            }
+                            input.set_text_silent(initial.clone(), cx);
+                            input
+                        })
+                    },
+                )
+                .read(cx)
+                .clone();
+            if input.read(cx).text() != this.filter.as_str() {
+                let filter = this.filter.clone();
+                input.update(cx, |input, cx| input.set_text_silent(filter, cx));
+            }
+            Some(input)
+        } else {
+            None
+        };
+        this.filter_input = filter_input;
+
+        let filtered = table_filtered_indices(&this.rows, &this.filter);
+        let total = filtered.len();
+
+        if let Some((row, col)) = this.editing
+            && this.editable_columns.contains(&col)
+            && row < this.rows.len()
+        {
+            let text = this.rows[row].get(col).cloned().unwrap_or_default();
+            let on_cell_change = this.on_cell_change.clone();
+            let on_edit_end = this.on_edit_end.clone();
+            let edit_label = this
+                .headers
+                .get(col)
+                .cloned()
+                .unwrap_or_else(|| SharedString::from("单元格"));
+            let edit_a11y_id = format!("{table_id}-edit-{row}-{col}-a11y");
+            let input = window
+                .use_keyed_state(
+                    ElementId::Name(format!("{table_id}-edit-{row}-{col}").into()),
+                    cx,
+                    move |_, cx| {
+                        cx.new(move |cx| {
+                            let mut input = TextInput::new(cx).bare(true);
+                            input.set_a11y_semantics(
+                                Semantics::new(Role::TextInput, format!("编辑 {edit_label}"))
+                                    .id(edit_a11y_id),
+                            );
+                            if let Some(on_cell_change) = on_cell_change.clone() {
+                                input = input.on_change(move |text, window, cx| {
+                                    on_cell_change(
+                                        &((row, col), SharedString::from(text)),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }
+                            if let Some(on_edit_end) = on_edit_end.clone() {
+                                input = input.on_blur(move |_, window, cx| {
+                                    on_edit_end(&(row, col), window, cx)
+                                });
+                            }
+                            input.set_text_silent(text, cx);
+                            input
+                        })
+                    },
+                )
+                .read(cx)
+                .clone();
+            Focusable::focus_handle(input.read(cx), cx).focus(window, cx);
+            this.edit_input = Some(input);
+        }
 
         // 分页切片：visible 保存全局行下标，回调统一用全局下标
-        let visible: Vec<usize> = match self.page {
+        let visible: Vec<usize> = match this.page {
             Some((page, size)) => {
                 let offset = page.saturating_sub(1) * size;
-                (offset..total.min(offset + size)).collect()
+                filtered.iter().skip(offset).take(size).copied().collect()
             }
-            None => (0..total).collect(),
+            None => filtered,
         };
 
+        this.editable_focus.clear();
+        if this.on_edit_start.is_some() && !this.editable_columns.is_empty() {
+            this.editable_focus
+                .reserve(visible.len().saturating_mul(this.editable_columns.len()));
+            let editable_columns = this.editable_columns.clone();
+            this.editable_focus.extend(
+                visible
+                    .iter()
+                    .flat_map(|row| editable_columns.iter().map(move |col| (*row, *col)))
+                    .filter(|(_, col)| *col < cols)
+                    .map(|(row, col)| {
+                        let focus = window
+                            .use_keyed_state(
+                                ElementId::Name(
+                                    format!("{table_id}-cell-focus-{row}-{col}").into(),
+                                ),
+                                cx,
+                                |_, cx| cx.focus_handle(),
+                            )
+                            .read(cx)
+                            .clone();
+                        ((row, col), focus)
+                    }),
+            );
+        }
+
         let radius = theme::with(|t| TableMetric::resolve(t).radius);
-        let column_count = cols + usize::from(self.selectable) + usize::from(expandable);
+        let column_count = cols + usize::from(this.selectable) + usize::from(expandable);
         let semantics = Semantics::new(Role::Table, "数据表格")
-            .id(format!("{:?}-table-a11y", self.id))
+            .id(format!("{:?}-table-a11y", this.id))
             .value(SharedString::from(format!(
                 "共 {total} 行，{column_count} 列"
             )));
         let mut root = semantics.apply(
             div()
-                .id(ElementId::Name(format!("{:?}-table", self.id).into()))
+                .id(ElementId::Name(format!("{:?}-table", this.id).into()))
                 .flex()
                 .flex_col()
                 .w_full()
@@ -292,8 +607,55 @@ impl RenderOnce for Table {
                 .overflow_hidden()
                 .text_sm(),
         );
-        if self.bordered {
+        if this.bordered {
             root = root.border_1().border_color(border_color());
+        }
+
+        if this.filterable {
+            let mut bar = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .px(px(cell_padding_inline()))
+                .py(px(cell_padding_block()))
+                .border_b_1()
+                .border_color(border_color())
+                .bg(header_bg())
+                .child(div().text_xs().text_color(header_color()).child("筛选"));
+            if let Some(input) = &this.filter_input {
+                bar = bar.child(div().w(px(240.)).child(input.clone()));
+            }
+            root = root.child(bar);
+        }
+
+        if let (Some(drag), Some(on_column_resize)) =
+            (this.resize_drag.clone(), this.on_column_resize.clone())
+        {
+            let widths = this.resolved_widths.clone();
+            let move_drag = drag.clone();
+            root = root
+                .on_mouse_move(move |event: &gpui::MouseMoveEvent, window, cx| {
+                    let Some(active) = move_drag.read(cx).as_ref() else {
+                        return;
+                    };
+                    let delta = f32::from(event.position.x) - active.start_x;
+                    if delta.abs() < 0.5 {
+                        return;
+                    }
+                    let mut next = widths.clone();
+                    if let Some(width) = next.get_mut(active.column) {
+                        *width = px((active.start_width + delta).max(64.));
+                    }
+                    on_column_resize(&next, window, cx);
+                })
+                .on_mouse_up(MouseButton::Left, {
+                    let drag = drag.clone();
+                    move |_, _, cx| drag.update(cx, |slot, _| *slot = None)
+                })
+                .on_mouse_up_out(MouseButton::Left, move |_, _, cx| {
+                    drag.update(cx, |slot, _| *slot = None)
+                });
         }
 
         // 空态
@@ -304,24 +666,46 @@ impl RenderOnce for Table {
                     .flex()
                     .justify_center()
                     .text_color(header_color())
-                    .child("暂无数据"),
+                    .child(if this.filterable && !this.filter.is_empty() {
+                        "无匹配数据"
+                    } else {
+                        "暂无数据"
+                    }),
             );
         }
 
         let all_checked =
-            !visible.is_empty() && visible.iter().all(|ix| self.selected_rows.contains(ix));
-        let some_checked = visible.iter().any(|ix| self.selected_rows.contains(ix));
+            !visible.is_empty() && visible.iter().all(|ix| this.selected_rows.contains(ix));
+        let some_checked = visible.iter().any(|ix| this.selected_rows.contains(ix));
 
         // 区间 / 切换多选：锚点跨帧持久于窗口，供 Shift 点击计算连续区间
-        let anchor = self.range_select.then(|| {
+        let anchor = this.range_select.then(|| {
             window.use_keyed_state(
-                ElementId::Name(format!("{:?}-selanchor", self.id).into()),
+                ElementId::Name(format!("{:?}-selanchor", this.id).into()),
                 cx,
                 |_, _| None::<usize>,
             )
         });
-        if self.fixed_left {
-            root = root.child(self.fixed_body(
+        if let Some(height) = this.virtualized.filter(|_| !expandable && !fixed_layout) {
+            let pagination = this.pagination_bar(total);
+            root = root.child(this.virtual_body(
+                &visible,
+                cols,
+                all_checked,
+                some_checked,
+                anchor.as_ref(),
+                height,
+                window,
+                cx,
+            ));
+            if let Some(pagination) = pagination {
+                root = root.child(pagination);
+            }
+            return root;
+        }
+
+        if fixed_layout {
+            root = root.child(this.fixed_body(
                 &visible,
                 cols,
                 all_checked,
@@ -331,7 +715,7 @@ impl RenderOnce for Table {
                 cx,
             ));
         } else {
-            root = self.normal_body(
+            root = this.normal_body(
                 root,
                 &visible,
                 cols,
@@ -342,35 +726,8 @@ impl RenderOnce for Table {
             );
         }
 
-        // 分页栏
-        if let Some((page, size)) = self.page {
-            let pages = ((total + size - 1) / size).max(1);
-            let mut pag = Pagination::new(
-                ElementId::Name(format!("{:?}-page", self.id).into()),
-                page,
-                pages,
-            );
-            if let Some(on_page_change) = self.on_page_change.clone() {
-                pag = pag.on_change(move |p, window, cx| on_page_change(p, window, cx));
-            }
-            root = root.child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .px(px(cell_padding_inline()))
-                    .py(px(cell_padding_block()))
-                    .border_t_1()
-                    .border_color(border_color())
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(header_color())
-                            .child(format!("共 {total} 条")),
-                    )
-                    .child(pag),
-            );
+        if let Some(pagination) = this.pagination_bar(total) {
+            root = root.child(pagination);
         }
 
         root
@@ -378,10 +735,49 @@ impl RenderOnce for Table {
 }
 
 impl Table {
-    /// 列宽容器：普通模式指定宽或 flex_1；固定模式指定宽或默认宽
+    /// 底部分页栏（无分页配置时返回 None）
+    fn pagination_bar(&self, total: usize) -> Option<Div> {
+        let (page, size) = self.page?;
+        let pages = ((total + size - 1) / size).max(1);
+        let mut pag = Pagination::new(
+            ElementId::Name(format!("{:?}-page", self.id).into()),
+            page,
+            pages,
+        );
+        if let Some(on_page_change) = self.on_page_change.clone() {
+            pag = pag.on_change(move |p, window, cx| on_page_change(p, window, cx));
+        }
+        Some(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .px(px(cell_padding_inline()))
+                .py(px(cell_padding_block()))
+                .border_t_1()
+                .border_color(border_color())
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(header_color())
+                        .child(format!("共 {total} 条")),
+                )
+                .child(pag),
+        )
+    }
+}
+
+impl Table {
+    /// 列宽容器：普通模式指定宽或 flex_1；固定 / 可拖拽模式指定宽或默认宽
     fn cell_w(&self, col: usize, fixed: bool) -> Div {
-        let w = self.widths.as_ref().and_then(|w| w.get(col)).copied();
-        match (fixed, w) {
+        let w = self.resolved_widths.get(col).copied().or_else(|| {
+            self.widths
+                .as_ref()
+                .and_then(|widths| widths.get(col))
+                .copied()
+        });
+        match (fixed || self.resizable_columns, w) {
             (true, Some(w)) => div().w(w),
             (true, None) => div().w(px(default_col_width())),
             (false, Some(w)) => div().w(w),
@@ -402,6 +798,7 @@ impl Table {
             .id(ElementId::Name(
                 format!("{:?}-header-{col}", self.id).into(),
             ))
+            .relative()
             .px(px(cell_padding_inline()))
             .overflow_hidden()
             .whitespace_nowrap()
@@ -442,6 +839,83 @@ impl Table {
             }
         } else {
             cell = cell.child(title.clone());
+        }
+        if self.resizable_columns
+            && let Some(on_column_resize) = self.on_column_resize.clone()
+        {
+            let width = self
+                .resolved_widths
+                .get(col)
+                .copied()
+                .unwrap_or(px(default_col_width()));
+            let mut handle = div()
+                .id(ElementId::Name(
+                    format!("{:?}-resize-{col}", self.id).into(),
+                ))
+                .absolute()
+                .right_0()
+                .top_0()
+                .bottom_0()
+                .w(px(6.))
+                .cursor(CursorStyle::ResizeLeftRight)
+                .hover(|style| style.bg(theme::with(|t| t.color_primary_bg)));
+            if let Some(drag) = self.resize_drag.clone() {
+                handle = handle.on_mouse_down(MouseButton::Left, move |event, _, cx| {
+                    cx.stop_propagation();
+                    drag.update(cx, |slot, _| {
+                        *slot = Some(ColumnDrag {
+                            column: col,
+                            start_x: f32::from(event.position.x),
+                            start_width: f32::from(width),
+                        });
+                    });
+                });
+            }
+            let on_key_resize = on_column_resize.clone();
+            let widths = Rc::new(self.resolved_widths.clone());
+            let key_widths = widths.clone();
+            handle = handle
+                .on_key_down(move |event, window, cx| {
+                    let delta = match event.keystroke.key.as_str() {
+                        "left" | "arrowleft" => -8.,
+                        "right" | "arrowright" => 8.,
+                        _ => return,
+                    };
+                    cx.stop_propagation();
+                    let next = table_resize_column(&key_widths, col, delta, 64.);
+                    on_key_resize(&next, window, cx);
+                })
+                .on_a11y_action(gpui::AccessibleAction::Increment, {
+                    let on_column_resize = on_column_resize.clone();
+                    let widths = widths.clone();
+                    move |_, window, cx| {
+                        let next = table_resize_column(&widths, col, 8., 64.);
+                        on_column_resize(&next, window, cx);
+                    }
+                })
+                .on_a11y_action(gpui::AccessibleAction::Decrement, {
+                    let on_column_resize = on_column_resize.clone();
+                    let widths = widths.clone();
+                    move |_, window, cx| {
+                        let next = table_resize_column(&widths, col, -8., 64.);
+                        on_column_resize(&next, window, cx);
+                    }
+                });
+            cell = cell.child(
+                Semantics::new(
+                    Role::Slider,
+                    SharedString::from(format!(
+                        "调整列宽 {}",
+                        self.headers.get(col).cloned().unwrap_or_default()
+                    )),
+                )
+                .id(format!("{:?}-resize-{col}-a11y", self.id))
+                .numeric(f64::from(width))
+                .numeric_range(64., 4096.)
+                .numeric_step(8.)
+                .focusable(true)
+                .apply(handle),
+            );
         }
         let semantics = Semantics::new(Role::ColumnHeader, title)
             .id(format!("{:?}-header-{col}-a11y", self.id))
@@ -621,6 +1095,9 @@ impl Table {
     ) -> Stateful<Div> {
         let mut cell = self
             .cell_w(col, fixed)
+            .id(ElementId::Name(
+                format!("{:?}-cell-{ix}-{col}", self.id).into(),
+            ))
             .px(px(cell_padding_inline()))
             .overflow_hidden()
             .whitespace_nowrap();
@@ -633,16 +1110,48 @@ impl Table {
             cell = cell.border_l_1().border_color(border_color());
         }
         let text = row.get(col).cloned().unwrap_or_default();
+        let editable = self.editable_columns.contains(&col) && self.on_edit_start.is_some();
         let semantics = Semantics::new(Role::Cell, text.clone())
             .id(format!("{:?}-cell-{ix}-{col}-a11y", self.id))
             .row(ix + 1, self.rows.len() + usize::from(self.show_header))
-            .column(column_index, column_count);
-        semantics.apply(
-            cell.id(ElementId::Name(
-                format!("{:?}-cell-{ix}-{col}", self.id).into(),
-            ))
-            .child(text),
-        )
+            .column(column_index, column_count)
+            .focusable(editable);
+
+        if self.editing == Some((ix, col))
+            && let Some(input) = &self.edit_input
+        {
+            let cell = cell
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_key_down(|event, window, cx| {
+                    if event.keystroke.key.as_str() == "enter" {
+                        cx.stop_propagation();
+                        window.blur(cx);
+                    }
+                });
+            return semantics.apply(cell.child(input.clone()));
+        }
+
+        if editable {
+            if let Some(focus) = self.editable_focus.get(&(ix, col)) {
+                cell = cell.track_focus(focus);
+            }
+            if let Some(on_edit_start) = self.on_edit_start.clone() {
+                let keyboard_edit_start = on_edit_start.clone();
+                cell = cell.on_key_down(move |event, window, cx| {
+                    if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                        cx.stop_propagation();
+                        keyboard_edit_start(&(ix, col), window, cx);
+                    }
+                });
+                cell = a11y::click(cell, move |event, window, cx| {
+                    if event.is_keyboard() || event.click_count() >= 2 {
+                        cx.stop_propagation();
+                        on_edit_start(&(ix, col), window, cx);
+                    }
+                });
+            }
+        }
+        semantics.apply(cell.child(text))
     }
 
     /// 行背景：选中高亮优先，其次斑马纹
@@ -716,6 +1225,87 @@ impl Table {
         semantics.apply(row)
     }
 
+    /// 普通模式表头（无固定列）
+    fn plain_header(
+        &self,
+        visible: &[usize],
+        cols: usize,
+        all_checked: bool,
+        some_checked: bool,
+        expandable: bool,
+        column_count: usize,
+        column_offset: usize,
+    ) -> Stateful<Div> {
+        let mut header = div()
+            .flex()
+            .flex_row()
+            .bg(header_bg())
+            .border_b_1()
+            .border_color(border_color());
+        if self.selectable {
+            header = header.child(self.check_all_cell(
+                all_checked,
+                some_checked,
+                visible,
+                false,
+                column_count,
+            ));
+        }
+        if expandable {
+            let mut spacer = div().w(px(expand_column_width()));
+            if self.bordered {
+                spacer = spacer.border_r_1().border_color(border_color());
+            }
+            header = header.child(spacer);
+        }
+        for col in 0..cols {
+            header = header.child(self.header_cell(col, false, column_offset + col, column_count));
+        }
+        let semantics = Semantics::new(Role::Row, "表头")
+            .id(format!("{:?}-header-row-a11y", self.id))
+            .row(0, self.rows.len() + 1);
+        semantics.apply(header.id(ElementId::Name(format!("{:?}-header-row", self.id).into())))
+    }
+
+    /// 单行（普通模式 / 虚拟模式共用）
+    fn row_element(
+        &self,
+        ix: usize,
+        local: usize,
+        cols: usize,
+        expandable: bool,
+        column_count: usize,
+        column_offset: usize,
+        anchor: Option<&Entity<Option<usize>>>,
+    ) -> Stateful<Div> {
+        let row = &self.rows[ix];
+        let mut row_div = div()
+            .id(ElementId::Name(format!("{:?}-row-{ix}", self.id).into()))
+            .flex()
+            .flex_row()
+            .border_b_1()
+            .border_color(border_color());
+        row_div = self.row_bg(row_div, local, ix);
+        if self.selectable {
+            row_div = row_div.child(self.row_check_cell(ix, false, column_count));
+        }
+        if expandable {
+            row_div =
+                row_div.child(self.expand_cell(ix, usize::from(self.selectable), column_count));
+        }
+        for col in 0..cols {
+            row_div = row_div.child(self.data_cell(
+                row,
+                ix,
+                col,
+                false,
+                column_offset + col,
+                column_count,
+            ));
+        }
+        self.with_row_click(row_div, ix, "row", anchor)
+    }
+
     /// 普通模式：单栏行堆叠 + 展开详情行
     fn normal_body(
         &self,
@@ -730,69 +1320,27 @@ impl Table {
         let column_count = cols + usize::from(self.selectable) + usize::from(expandable);
         let column_offset = usize::from(self.selectable) + usize::from(expandable);
         if self.show_header {
-            let mut header = div()
-                .flex()
-                .flex_row()
-                .bg(header_bg())
-                .border_b_1()
-                .border_color(border_color());
-            if self.selectable {
-                header = header.child(self.check_all_cell(
-                    all_checked,
-                    some_checked,
-                    visible,
-                    false,
-                    column_count,
-                ));
-            }
-            if expandable {
-                let mut spacer = div().w(px(expand_column_width()));
-                if self.bordered {
-                    spacer = spacer.border_r_1().border_color(border_color());
-                }
-                header = header.child(spacer);
-            }
-            for col in 0..cols {
-                header =
-                    header.child(self.header_cell(col, false, column_offset + col, column_count));
-            }
-            let semantics = Semantics::new(Role::Row, "表头")
-                .id(format!("{:?}-header-row-a11y", self.id))
-                .row(0, self.rows.len() + 1);
-            root = root.child(
-                semantics
-                    .apply(header.id(ElementId::Name(format!("{:?}-header-row", self.id).into()))),
-            );
+            root = root.child(self.plain_header(
+                visible,
+                cols,
+                all_checked,
+                some_checked,
+                expandable,
+                column_count,
+                column_offset,
+            ));
         }
 
         for (local, &ix) in visible.iter().enumerate() {
-            let row = &self.rows[ix];
-            let mut row_div = div()
-                .id(ElementId::Name(format!("{:?}-row-{ix}", self.id).into()))
-                .flex()
-                .flex_row()
-                .border_b_1()
-                .border_color(border_color());
-            row_div = self.row_bg(row_div, local, ix);
-            if self.selectable {
-                row_div = row_div.child(self.row_check_cell(ix, false, column_count));
-            }
-            if expandable {
-                row_div =
-                    row_div.child(self.expand_cell(ix, usize::from(self.selectable), column_count));
-            }
-            for col in 0..cols {
-                row_div = row_div.child(self.data_cell(
-                    row,
-                    ix,
-                    col,
-                    false,
-                    column_offset + col,
-                    column_count,
-                ));
-            }
-            row_div = self.with_row_click(row_div, ix, "row", anchor);
-            root = root.child(row_div);
+            root = root.child(self.row_element(
+                ix,
+                local,
+                cols,
+                expandable,
+                column_count,
+                column_offset,
+                anchor,
+            ));
 
             // 展开详情行
             if expandable && self.expanded_rows.contains(&ix) {
@@ -822,8 +1370,86 @@ impl Table {
         root
     }
 
-    /// 固定左列模式：左栏（勾选列 + 首列）固定，右栏其余列横向滚动，
-    /// 统一行高保证两栏逐行对齐
+    /// 虚拟模式：表头 + 固定高度视口内的按需行渲染 + 主题滚动条
+    fn virtual_body(
+        self,
+        visible: &[usize],
+        cols: usize,
+        all_checked: bool,
+        some_checked: bool,
+        anchor: Option<&Entity<Option<usize>>>,
+        height: Pixels,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Div {
+        let column_count = cols + usize::from(self.selectable);
+        let column_offset = usize::from(self.selectable);
+        let mut body = div().w_full().flex().flex_col();
+        if self.show_header {
+            body = body.child(self.plain_header(
+                visible,
+                cols,
+                all_checked,
+                some_checked,
+                false,
+                column_count,
+                column_offset,
+            ));
+        }
+
+        let table_id = format!("{:?}", self.id);
+        let handle = self.virtual_scroll.clone().unwrap_or_else(|| {
+            window
+                .use_keyed_state(
+                    ElementId::Name(format!("{table_id}-vscroll").into()),
+                    cx,
+                    |_, _| UniformListScrollHandle::new(),
+                )
+                .read(cx)
+                .clone()
+        });
+        let bar = Scrollbar::vertical(
+            ElementId::Name(format!("{table_id}-vbar").into()),
+            handle.0.borrow().base_handle.clone(),
+        );
+
+        let visible: Vec<usize> = visible.to_vec();
+        let anchor = anchor.cloned();
+        let list = uniform_list(
+            ElementId::Name(format!("{table_id}-vbody").into()),
+            visible.len(),
+            move |range, _, _| {
+                range
+                    .map(|local| {
+                        let ix = visible[local];
+                        self.row_element(
+                            ix,
+                            local,
+                            cols,
+                            false,
+                            column_count,
+                            column_offset,
+                            anchor.as_ref(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            },
+        )
+        .size_full()
+        .track_scroll(&handle);
+
+        body.child(
+            div()
+                .relative()
+                .w_full()
+                .h(height)
+                .overflow_hidden()
+                .child(list)
+                .child(div().absolute().top_0().right_0().h_full().child(bar)),
+        )
+    }
+
+    /// 固定列模式：左栏 / 右栏固定，中间栏横向滚动，统一行高逐行对齐。
     fn fixed_body(
         &self,
         visible: &[usize],
@@ -836,126 +1462,193 @@ impl Table {
     ) -> Div {
         let column_count = cols + usize::from(self.selectable);
         let column_offset = usize::from(self.selectable);
-        let w0 = self
-            .widths
-            .as_ref()
-            .and_then(|w| w.first())
-            .copied()
-            .unwrap_or(px(default_col_width()));
-        let left_w = w0
-            + if self.selectable {
-                px(selection_column_width())
-            } else {
-                px(0.)
-            };
-        let right_w: Pixels = (1..cols)
-            .map(|c| {
-                self.widths
-                    .as_ref()
-                    .and_then(|w| w.get(c))
-                    .copied()
-                    .unwrap_or(px(default_col_width()))
-            })
-            .fold(px(0.), |a, b| a + b);
+        let (left_count, middle_count, right_count) =
+            table_fixed_column_ranges(cols, self.fixed_left, self.fixed_right);
+        let middle_start = left_count;
+        let middle_end = cols - right_count;
+        let right_start = cols - right_count;
+        let width = |col: usize| {
+            self.resolved_widths
+                .get(col)
+                .copied()
+                .unwrap_or(px(default_col_width()))
+        };
+        let selection_w = if self.selectable {
+            px(selection_column_width())
+        } else {
+            px(0.)
+        };
+        let left_w = selection_w + (0..left_count).fold(px(0.), |acc, col| acc + width(col));
+        let middle_w = (middle_start..middle_end).fold(px(0.), |acc, col| acc + width(col));
+        let right_w = (right_start..cols).fold(px(0.), |acc, col| acc + width(col));
 
-        // 左固定栏
-        let mut left = div()
-            .flex()
-            .flex_col()
-            .w(left_w)
-            .border_r_1()
-            .border_color(border_color());
-        if self.show_header {
-            let mut left_header = div()
-                .flex()
-                .flex_row()
-                .h(px(row_height()))
-                .bg(header_bg())
-                .border_b_1()
-                .border_color(border_color());
-            if self.selectable {
-                left_header = left_header.child(self.check_all_cell(
-                    all_checked,
-                    some_checked,
-                    visible,
-                    true,
-                    column_count,
-                ));
-            }
-            left_header = left_header.child(self.header_cell(0, true, column_offset, column_count));
-            let semantics = Semantics::new(Role::Row, "固定列表头")
-                .id(format!("{:?}-header-left-a11y", self.id))
-                .row(0, self.rows.len() + 1);
-            left = left.child(semantics.apply(
-                left_header.id(ElementId::Name(format!("{:?}-header-left", self.id).into())),
-            ));
+        let mut left = div().flex().flex_col().w(left_w);
+        if left_count > 0 || self.selectable {
+            left = left.border_r_1().border_color(border_color());
+        }
+        let mut middle = div().flex().flex_col().min_w(middle_w);
+        let mut right = div().flex().flex_col().w(right_w);
+        if right_count > 0 {
+            right = right.border_l_1().border_color(border_color());
         }
 
-        // 右滚动栏
-        let mut right = div().flex().flex_col().min_w(right_w);
         if self.show_header {
-            let mut right_header = div()
-                .flex()
-                .flex_row()
-                .h(px(row_height()))
-                .bg(header_bg())
-                .border_b_1()
-                .border_color(border_color());
-            for col in 1..cols {
-                right_header = right_header.child(self.header_cell(
-                    col,
-                    true,
-                    column_offset + col,
-                    column_count,
-                ));
+            if left_count > 0 || self.selectable {
+                let mut header = div()
+                    .flex()
+                    .flex_row()
+                    .h(px(row_height()))
+                    .bg(header_bg())
+                    .border_b_1()
+                    .border_color(border_color());
+                if self.selectable {
+                    header = header.child(self.check_all_cell(
+                        all_checked,
+                        some_checked,
+                        visible,
+                        true,
+                        column_count,
+                    ));
+                }
+                for col in 0..left_count {
+                    header = header.child(self.header_cell(
+                        col,
+                        true,
+                        column_offset + col,
+                        column_count,
+                    ));
+                }
+                left = left.child(
+                    Semantics::new(Role::Row, "固定列表头")
+                        .id(format!("{:?}-header-left-a11y", self.id))
+                        .row(0, self.rows.len() + 1)
+                        .apply(
+                            header.id(ElementId::Name(format!("{:?}-header-left", self.id).into())),
+                        ),
+                );
             }
-            let semantics = Semantics::new(Role::Row, "滚动列表头")
-                .id(format!("{:?}-header-right-a11y", self.id))
-                .row(0, self.rows.len() + 1);
-            right = right.child(semantics.apply(right_header.id(ElementId::Name(
-                format!("{:?}-header-right", self.id).into(),
-            ))));
+            if middle_count > 0 {
+                let mut header = div()
+                    .flex()
+                    .flex_row()
+                    .h(px(row_height()))
+                    .bg(header_bg())
+                    .border_b_1()
+                    .border_color(border_color());
+                for col in middle_start..middle_end {
+                    header = header.child(self.header_cell(
+                        col,
+                        true,
+                        column_offset + col,
+                        column_count,
+                    ));
+                }
+                middle = middle.child(
+                    Semantics::new(Role::Row, "滚动列表头")
+                        .id(format!("{:?}-header-middle-a11y", self.id))
+                        .row(0, self.rows.len() + 1)
+                        .apply(header.id(ElementId::Name(
+                            format!("{:?}-header-middle", self.id).into(),
+                        ))),
+                );
+            }
+            if right_count > 0 {
+                let mut header = div()
+                    .flex()
+                    .flex_row()
+                    .h(px(row_height()))
+                    .bg(header_bg())
+                    .border_b_1()
+                    .border_color(border_color());
+                for col in right_start..cols {
+                    header = header.child(self.header_cell(
+                        col,
+                        true,
+                        column_offset + col,
+                        column_count,
+                    ));
+                }
+                right = right.child(
+                    Semantics::new(Role::Row, "固定右列表头")
+                        .id(format!("{:?}-header-right-a11y", self.id))
+                        .row(0, self.rows.len() + 1)
+                        .apply(header.id(ElementId::Name(
+                            format!("{:?}-header-right", self.id).into(),
+                        ))),
+                );
+            }
         }
 
         for (local, &ix) in visible.iter().enumerate() {
             let row = &self.rows[ix];
-            let mut left_row = div()
-                .id(ElementId::Name(format!("{:?}-row-{ix}", self.id).into()))
-                .flex()
-                .flex_row()
-                .h(px(row_height()));
-            let mut right_row = div()
-                .id(ElementId::Name(format!("{:?}-rowR-{ix}", self.id).into()))
-                .flex()
-                .flex_row()
-                .h(px(row_height()));
-            left_row = left_row.border_b_1().border_color(border_color());
-            right_row = right_row.border_b_1().border_color(border_color());
-            left_row = self.row_bg(left_row, local, ix);
-            right_row = self.row_bg(right_row, local, ix);
-            if self.selectable {
-                left_row = left_row.child(self.row_check_cell(ix, true, column_count));
+            if left_count > 0 || self.selectable {
+                let mut left_row = div()
+                    .id(ElementId::Name(format!("{:?}-rowL-{ix}", self.id).into()))
+                    .flex()
+                    .flex_row()
+                    .h(px(row_height()))
+                    .border_b_1()
+                    .border_color(border_color());
+                left_row = self.row_bg(left_row, local, ix);
+                if self.selectable {
+                    left_row = left_row.child(self.row_check_cell(ix, true, column_count));
+                }
+                for col in 0..left_count {
+                    left_row = left_row.child(self.data_cell(
+                        row,
+                        ix,
+                        col,
+                        true,
+                        column_offset + col,
+                        column_count,
+                    ));
+                }
+                left = left.child(self.with_row_click(left_row, ix, "rowL", anchor));
             }
-            left_row =
-                left_row.child(self.data_cell(row, ix, 0, true, column_offset, column_count));
-            for col in 1..cols {
-                right_row = right_row.child(self.data_cell(
-                    row,
-                    ix,
-                    col,
-                    true,
-                    column_offset + col,
-                    column_count,
-                ));
+            if middle_count > 0 {
+                let mut middle_row = div()
+                    .id(ElementId::Name(format!("{:?}-rowM-{ix}", self.id).into()))
+                    .flex()
+                    .flex_row()
+                    .h(px(row_height()))
+                    .border_b_1()
+                    .border_color(border_color());
+                middle_row = self.row_bg(middle_row, local, ix);
+                for col in middle_start..middle_end {
+                    middle_row = middle_row.child(self.data_cell(
+                        row,
+                        ix,
+                        col,
+                        true,
+                        column_offset + col,
+                        column_count,
+                    ));
+                }
+                middle = middle.child(self.with_row_click(middle_row, ix, "rowM", anchor));
             }
-            left_row = self.with_row_click(left_row, ix, "rowL", anchor);
-            right_row = self.with_row_click(right_row, ix, "rowR", anchor);
-            left = left.child(left_row);
-            right = right.child(right_row);
+            if right_count > 0 {
+                let mut right_row = div()
+                    .id(ElementId::Name(format!("{:?}-rowR-{ix}", self.id).into()))
+                    .flex()
+                    .flex_row()
+                    .h(px(row_height()))
+                    .border_b_1()
+                    .border_color(border_color());
+                right_row = self.row_bg(right_row, local, ix);
+                for col in right_start..cols {
+                    right_row = right_row.child(self.data_cell(
+                        row,
+                        ix,
+                        col,
+                        true,
+                        column_offset + col,
+                        column_count,
+                    ));
+                }
+                right = right.child(self.with_row_click(right_row, ix, "rowR", anchor));
+            }
         }
 
-        // 横向滚动句柄：use_keyed_state 跨帧持久，与右栏滚动容器共享 offset，
-        // 滚动条拖拽 / 轨道点击 / 滚轮都通过它驱动内容滚动
         let handle = window
             .use_keyed_state(
                 ElementId::Name(format!("{:?}-hscroll", self.id).into()),
@@ -965,22 +1658,24 @@ impl Table {
             .read(cx)
             .clone();
 
-        div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .child(
-                div().flex().flex_row().w_full().child(left).child(
+        let mut root = div().flex().flex_col().w_full().child(
+            div()
+                .flex()
+                .flex_row()
+                .w_full()
+                .child(left)
+                .child(
                     div()
                         .id(ElementId::Name(format!("{:?}-scroll", self.id).into()))
                         .flex_1()
                         .overflow_x_scroll()
                         .track_scroll(&handle)
-                        .child(right),
-                ),
-            )
-            // 主题化横向滚动条：对齐右栏下方，左侧留出固定列宽的占位
-            .child(
+                        .child(middle),
+                )
+                .child(right),
+        );
+        if middle_count > 0 {
+            root = root.child(
                 div()
                     .flex()
                     .flex_row()
@@ -989,8 +1684,11 @@ impl Table {
                     .child(div().flex_1().child(Scrollbar::horizontal(
                         ElementId::Name(format!("{:?}-hsb", self.id).into()),
                         handle,
-                    ))),
-            )
+                    )))
+                    .child(div().w(right_w)),
+            );
+        }
+        root
     }
 }
 
@@ -1059,7 +1757,12 @@ fn check_box(id: &str, checked: bool, half: bool) -> Stateful<Div> {
 
 #[cfg(test)]
 mod tests {
-    use super::{next_sort, range_selection};
+    use gpui::px;
+
+    use super::{
+        next_sort, range_selection, table_filtered_indices, table_fixed_column_ranges,
+        table_resize_column,
+    };
 
     #[test]
     fn sort_cycles_ascending_then_descending() {
@@ -1081,5 +1784,36 @@ mod tests {
             range_selection(&[0, 2], 1, Some(0), false, true),
             vec![0, 1, 2]
         );
+    }
+
+    #[test]
+    fn filtering_is_case_insensitive_and_preserves_original_indices() {
+        let rows = vec![
+            vec!["Alpha".into(), "Ready".into()],
+            vec!["Beta".into(), "Sync".into()],
+            vec!["Gamma".into(), "alpha".into()],
+        ];
+        assert_eq!(table_filtered_indices(&rows, ""), vec![0, 1, 2]);
+        assert_eq!(table_filtered_indices(&rows, "ALPHA"), vec![0, 2]);
+        assert_eq!(table_filtered_indices(&rows, "sync"), vec![1]);
+        assert!(table_filtered_indices(&rows, "missing").is_empty());
+    }
+
+    #[test]
+    fn column_resize_clamps_to_minimum_and_keeps_other_columns() {
+        let widths = vec![px(100.), px(120.), px(140.)];
+        let next = table_resize_column(&widths, 1, 25., 64.);
+        assert_eq!(next, vec![px(100.), px(145.), px(140.)]);
+        let next = table_resize_column(&widths, 0, -500., 64.);
+        assert_eq!(next, vec![px(64.), px(120.), px(140.)]);
+        assert_eq!(table_resize_column(&widths, 9, 20., 64.), widths);
+    }
+
+    #[test]
+    fn fixed_column_ranges_account_for_overlap() {
+        assert_eq!(table_fixed_column_ranges(5, true, 1), (1, 3, 1));
+        assert_eq!(table_fixed_column_ranges(5, false, 2), (0, 3, 2));
+        assert_eq!(table_fixed_column_ranges(2, true, 9), (1, 0, 1));
+        assert_eq!(table_fixed_column_ranges(0, true, 9), (0, 0, 0));
     }
 }

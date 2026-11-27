@@ -1,6 +1,6 @@
 //! 右键上下文菜单：包裹任意内容，右键在光标处弹出动作菜单。
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
     AnyElement, App, ElementId, IntoElement, MouseButton, ParentElement, Pixels, Point, RenderOnce,
@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::MenuItem;
 use crate::a11y::{self, Semantics};
-use crate::menu::{divider_state, menu_container, menu_divider, menu_item_row};
+use crate::menu::{divider_state, point_in_any_bounds, render_menu_rows};
 use crate::theme::{self, metric};
 
 /// 上下文菜单状态（全局共享，同一时刻只展开一个）
@@ -60,13 +60,37 @@ impl RenderOnce for ContextMenu {
         let state = cx.default_global::<ContextMenuState>();
         let is_open = state.open_id.as_ref() == Some(&id);
         let position = state.position;
+        let submenu_state = window.use_keyed_state(
+            ElementId::Name(format!("{id}-submenu-state").into()),
+            cx,
+            |_, _| None::<SharedString>,
+        );
+        let open_submenu = submenu_state.read(cx).clone();
+        let popup_bounds_state = window.use_keyed_state(
+            ElementId::Name(format!("{id}-popup-bounds").into()),
+            cx,
+            |_, _| Rc::new(RefCell::new(Vec::new())),
+        );
+        let popup_bounds = popup_bounds_state.read(cx).clone();
+        popup_bounds.borrow_mut().clear();
+        let set_open_submenu = {
+            let state = submenu_state.clone();
+            Rc::new(move |path, _window: &mut Window, cx: &mut App| {
+                if *state.read(cx) != path {
+                    state.write(cx, path);
+                    cx.refresh_windows();
+                }
+            })
+        };
         let open_menu = {
             let id = id.clone();
+            let set_open_submenu = set_open_submenu.clone();
             Rc::new(
-                move |position: Point<Pixels>, _window: &mut Window, cx: &mut App| {
+                move |position: Point<Pixels>, window: &mut Window, cx: &mut App| {
                     let state = cx.default_global::<ContextMenuState>();
                     state.open_id = Some(id.clone());
                     state.position = position;
+                    set_open_submenu(None, window, cx);
                     cx.stop_propagation();
                     cx.refresh_windows();
                 },
@@ -118,52 +142,43 @@ impl RenderOnce for ContextMenu {
                 .max(px(0.));
 
             let menu_id = format!("{id}-menu");
-            let mut menu = menu_container(ElementId::Name(menu_id.clone().into()))
-                .w(menu_width)
-                .on_mouse_down_out({
-                    let id = id.clone();
-                    move |_, _, cx| {
-                        let state = cx.default_global::<ContextMenuState>();
-                        if state.open_id.as_ref() == Some(&id) {
-                            state.open_id = None;
-                            cx.refresh_windows();
-                        }
+            let close = {
+                let id = id.clone();
+                let set_open_submenu = set_open_submenu.clone();
+                Rc::new(move |window: &mut Window, cx: &mut App| {
+                    set_open_submenu(None, window, cx);
+                    let state = cx.default_global::<ContextMenuState>();
+                    if state.open_id.as_ref() == Some(&id) {
+                        state.open_id = None;
                     }
-                });
-
-            let item_count = self.items.iter().filter(|item| !item.separator).count();
-            let mut item_position = 0;
-            for (ix, item) in self.items.iter().enumerate() {
-                if item.separator {
-                    menu = menu.child(menu_divider());
-                    continue;
-                }
-                item_position += 1;
-                let close = {
-                    let id = id.clone();
-                    Rc::new(move |_: &mut Window, cx: &mut App| {
-                        let state = cx.default_global::<ContextMenuState>();
-                        if state.open_id.as_ref() == Some(&id) {
-                            state.open_id = None;
-                        }
+                    cx.refresh_windows();
+                })
+            };
+            let menu = render_menu_rows(
+                ElementId::Name(menu_id.clone().into()),
+                &self.items,
+                menu_width,
+                close,
+                open_submenu.as_ref(),
+                set_open_submenu.clone(),
+                "",
+                popup_bounds.clone(),
+            );
+            let menu = menu.on_mouse_down_out({
+                let id = id.clone();
+                let set_open_submenu = set_open_submenu.clone();
+                move |event, window, cx| {
+                    if point_in_any_bounds(&popup_bounds.borrow(), event.position) {
+                        return;
+                    }
+                    set_open_submenu(None, window, cx);
+                    let state = cx.default_global::<ContextMenuState>();
+                    if state.open_id.as_ref() == Some(&id) {
+                        state.open_id = None;
                         cx.refresh_windows();
-                    })
-                };
-                let row = menu_item_row(
-                    ElementId::Name(format!("{id}-item-{ix}").into()),
-                    item,
-                    close.clone(),
-                );
-                let row = Semantics::new(Role::MenuItem, item.label.clone())
-                    .id(format!("{id}-item-{ix}"))
-                    .selected(false)
-                    .position(item_position, item_count)
-                    .disabled(item.disabled)
-                    .focusable(!item.disabled)
-                    .apply(row);
-                menu = menu.child(row);
-            }
-
+                    }
+                }
+            });
             let menu = Semantics::new(Role::Menu, "上下文菜单")
                 .id(menu_id)
                 .apply(menu);

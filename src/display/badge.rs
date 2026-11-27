@@ -1,12 +1,15 @@
 //! 徽章控件：小型状态标签（Badge）与右上角计数角标（CountBadge）。
 
 use gpui::{
-    AnyElement, BoxShadow, Div, Hsla, IntoElement, Role, SharedString, Stateful, div, prelude::*,
-    px,
+    AnyElement, BoxShadow, Context, Div, Hsla, IntoElement, Render, Role, SharedString, Stateful,
+    Window, div, prelude::*, px,
 };
 
-use crate::a11y::Semantics;
-use crate::theme::{self, Tokens, metric};
+use crate::{
+    a11y::Semantics,
+    overlay::tooltip::tooltip_bubble,
+    theme::{self, Tokens, metric},
+};
 
 /// 徽章配色变体
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -19,29 +22,126 @@ pub enum BadgeVariant {
     Danger,
 }
 
+/// antd Badge 的预设状态点颜色。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BadgeStatus {
+    Default,
+    Processing,
+    Success,
+    Error,
+    Warning,
+}
+
+/// 计数角标尺寸；状态点文本始终使用正文字号。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BadgeSize {
+    #[default]
+    Default,
+    Small,
+}
+
+pub fn badge_variant_colors(
+    tokens: &Tokens,
+    variant: BadgeVariant,
+    custom: Option<Hsla>,
+) -> (Hsla, Hsla) {
+    if let Some(color) = custom {
+        return (Hsla { a: 0.12, ..color }, color);
+    }
+    match variant {
+        BadgeVariant::Neutral => (tokens.control_item_bg_hover, tokens.color_text_secondary),
+        BadgeVariant::Info => (tokens.color_primary_bg, tokens.color_primary),
+        BadgeVariant::Success => (tokens.color_success_bg, tokens.color_success),
+        BadgeVariant::Warning => (tokens.color_warning_bg, tokens.color_warning),
+        BadgeVariant::Danger => (tokens.color_error_bg, tokens.color_error),
+    }
+}
+
+pub fn badge_status_color(tokens: &Tokens, status: BadgeStatus, custom: Option<Hsla>) -> Hsla {
+    if let Some(color) = custom {
+        return color;
+    }
+    match status {
+        BadgeStatus::Default => tokens.color_text_placeholder,
+        BadgeStatus::Processing => tokens.color_info,
+        BadgeStatus::Success => tokens.color_success,
+        BadgeStatus::Error => tokens.color_error,
+        BadgeStatus::Warning => tokens.color_warning,
+    }
+}
+
 /// 通用徽章。
 ///
 /// ```ignore
 /// Badge::new("运行中").success()
+/// Badge::new("成功").status(BadgeStatus::Success)
 /// ```
 pub struct Badge {
+    id: Option<SharedString>,
+    origin: SharedString,
     label: SharedString,
     variant: BadgeVariant,
     custom: Option<Hsla>,
+    status: Option<BadgeStatus>,
+    title: Option<SharedString>,
+    aria_label: Option<SharedString>,
 }
 
 impl Badge {
+    #[track_caller]
     pub fn new(label: impl Into<SharedString>) -> Self {
+        let location = core::panic::Location::caller();
         Self {
+            id: None,
+            origin: format!(
+                "badge-{}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            )
+            .into(),
             label: label.into(),
             variant: BadgeVariant::default(),
             custom: None,
+            status: None,
+            title: None,
+            aria_label: None,
         }
     }
 
-    /// 自定义颜色（文字用该色，背景用其 12% 透明度）
+    /// 实例 ID；同页多个同文本徽章应使用不同值。
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// 更新显示文本。
+    pub fn text(mut self, text: impl Into<SharedString>) -> Self {
+        self.label = text.into();
+        self
+    }
+
+    /// 状态点模式；设置后显示「色点 + 文本」，不再显示胶囊底色。
+    pub fn status(mut self, status: BadgeStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    /// 自定义颜色（胶囊模式文字用该色、背景用其 12% 透明度；状态点模式用于色点）。
     pub fn color(mut self, color: Hsla) -> Self {
         self.custom = Some(color);
+        self
+    }
+
+    /// 悬停提示，同时写入无障碍描述。
+    pub fn title(mut self, title: impl Into<SharedString>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// 无障碍名称；不设置时使用显示文本。
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
         self
     }
 
@@ -66,25 +166,71 @@ impl Badge {
     }
 }
 
+struct BadgeTitleView {
+    text: SharedString,
+}
+
+impl Render for BadgeTitleView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        tooltip_bubble(self.text.clone())
+    }
+}
+
+fn with_badge_title(element: Stateful<Div>, title: Option<SharedString>) -> Stateful<Div> {
+    match title {
+        Some(text) => {
+            element.tooltip(move |_, cx| cx.new(|_| BadgeTitleView { text: text.clone() }).into())
+        }
+        None => element,
+    }
+}
+
 impl IntoElement for Badge {
     type Element = Stateful<Div>;
 
     fn into_element(self) -> Self::Element {
-        let (bg, fg): (Hsla, Hsla) = match self.custom {
-            Some(c) => (Hsla { a: 0.12, ..c }, c),
-            None => match self.variant {
-                BadgeVariant::Neutral => (theme::hover_bg(), theme::text_muted()),
-                BadgeVariant::Info => (theme::accent_soft(), theme::accent()),
-                BadgeVariant::Success => (theme::success_soft(), theme::success()),
-                BadgeVariant::Warning => (theme::warning_soft(), theme::warning()),
-                BadgeVariant::Danger => (theme::danger_soft(), theme::danger()),
-            },
-        };
-
-        let semantics =
-            Semantics::new(Role::Status, self.label.clone()).id(format!("badge-{}", self.label));
+        let id = self.id.clone().unwrap_or_else(|| self.origin.clone());
+        let accessible_label = self
+            .aria_label
+            .clone()
+            .unwrap_or_else(|| self.label.clone());
+        let mut semantics = Semantics::new(Role::Status, accessible_label).id(id);
+        if let Some(title) = &self.title {
+            semantics = semantics.description(title.clone());
+        }
         let element_id = semantics.element_id();
-        semantics.apply(
+
+        let element = if let Some(status) = self.status {
+            let (dot_color, text_color, font_size, gap) = theme::with(|tokens| {
+                (
+                    badge_status_color(tokens, status, self.custom),
+                    tokens.color_text,
+                    tokens.font_size,
+                    tokens.margin_xs,
+                )
+            });
+            div()
+                .id(element_id)
+                .flex()
+                .items_center()
+                .child(
+                    div()
+                        .relative()
+                        .top(px(-1.))
+                        .size(px(6.))
+                        .rounded_full()
+                        .bg(dot_color),
+                )
+                .child(
+                    div()
+                        .ml(px(gap))
+                        .text_size(px(font_size))
+                        .text_color(text_color)
+                        .child(self.label),
+                )
+        } else {
+            let (bg, fg) =
+                theme::with(|tokens| badge_variant_colors(tokens, self.variant, self.custom));
             div()
                 .id(element_id)
                 .flex()
@@ -95,8 +241,10 @@ impl IntoElement for Badge {
                 .bg(bg)
                 .text_color(fg)
                 .text_xs()
-                .child(self.label),
-        )
+                .child(self.label)
+        };
+
+        with_badge_title(semantics.apply(element), self.title)
     }
 }
 
@@ -130,6 +278,30 @@ pub fn badge_state(tokens: &Tokens, _dot: bool, color: Option<Hsla>) -> BadgeSty
     }
 }
 
+pub fn badge_state_sized(
+    tokens: &Tokens,
+    dot: bool,
+    color: Option<Hsla>,
+    size: BadgeSize,
+) -> BadgeStyle {
+    let mut style = badge_state(tokens, dot, color);
+    if size == BadgeSize::Small {
+        style.height = 14.;
+        style.min_width = 14.;
+        style.radius = 7.;
+        style.line_height = 14.;
+    }
+    style
+}
+
+fn badge_count_width(style: &BadgeStyle, chars: usize) -> f32 {
+    if chars <= 1 {
+        style.min_width
+    } else {
+        style.min_width.max(16. + chars as f32 * 7.)
+    }
+}
+
 /// 计数角标：包裹任意元素，在其右上角显示红色计数 / 圆点（对应 antd Badge）。
 ///
 /// ```ignore
@@ -146,6 +318,9 @@ pub struct CountBadge {
     show_zero: bool,
     color: Option<Hsla>,
     offset: (f32, f32),
+    size: BadgeSize,
+    title: Option<SharedString>,
+    aria_label: Option<SharedString>,
     child: Option<AnyElement>,
 }
 
@@ -168,6 +343,9 @@ impl CountBadge {
             show_zero: false,
             color: None,
             offset: (0., 0.),
+            size: BadgeSize::Default,
+            title: None,
+            aria_label: None,
             child: None,
         }
     }
@@ -208,6 +386,24 @@ impl CountBadge {
         self
     }
 
+    /// 计数角标尺寸；状态点文本不受影响。
+    pub fn size(mut self, size: BadgeSize) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// 悬停提示，同时写入无障碍描述。
+    pub fn title(mut self, title: impl Into<SharedString>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// 无障碍名称；不设置时使用「N 条消息」。
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
     pub fn child(mut self, child: impl IntoElement) -> Self {
         self.child = Some(child.into_any_element());
         self
@@ -223,7 +419,7 @@ impl RenderOnce for CountBadge {
 
         let visible = self.dot || self.count > 0 || self.show_zero;
         if visible {
-            let style = theme::with(|t| badge_state(t, self.dot, self.color));
+            let style = theme::with(|t| badge_state_sized(t, self.dot, self.color, self.size));
             let (dx, dy) = self.offset;
             let badge_label = if self.dot {
                 SharedString::from("有新消息")
@@ -232,16 +428,24 @@ impl RenderOnce for CountBadge {
             } else {
                 SharedString::from(format!("{} 条消息", self.count))
             };
-            let semantics = Semantics::new(Role::Status, badge_label).id(format!(
+            let accessible_label = self
+                .aria_label
+                .clone()
+                .unwrap_or_else(|| badge_label.clone());
+            let mut semantics = Semantics::new(Role::Status, accessible_label).id(format!(
                 "{}-{}-{}",
                 self.id.as_deref().unwrap_or(&self.origin),
                 self.count,
                 self.dot
             ));
+            if let Some(title) = &self.title {
+                semantics = semantics.description(title.clone());
+            }
             let element_id = semantics.element_id();
+            let title = self.title.clone();
             let badge = if self.dot {
                 let half = style.dot_size / 2.0;
-                semantics.apply(
+                let element = semantics.apply(
                     div()
                         .id(element_id)
                         .absolute()
@@ -251,16 +455,16 @@ impl RenderOnce for CountBadge {
                         .rounded_full()
                         .bg(style.bg)
                         .shadow(vec![style.ring]),
-                )
+                );
+                with_badge_title(element, title)
             } else {
                 let label = if self.count > self.max {
                     format!("{}+", self.max)
                 } else {
                     self.count.to_string()
                 };
-                let m = theme::with(|t| metric::BadgeMetric::resolve(t));
-                let width = m.count_width(label.chars().count());
-                semantics.apply(
+                let width = badge_count_width(&style, label.chars().count());
+                let element = semantics.apply(
                     div()
                         .id(element_id)
                         .absolute()
@@ -278,7 +482,8 @@ impl RenderOnce for CountBadge {
                         .line_height(px(style.line_height))
                         .shadow(vec![style.ring])
                         .child(label),
-                )
+                );
+                with_badge_title(element, title)
             };
             wrapper = wrapper.child(badge);
         }

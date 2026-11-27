@@ -1493,6 +1493,66 @@ pub fn table_style(tokens: &Tokens) -> TableStyle {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MenuBarMetric {
+    pub height: f32,
+    pub padding_inline: f32,
+    pub gap: f32,
+    pub item_padding_inline: f32,
+    pub item_radius: f32,
+    pub indicator_width: f32,
+    pub indicator_height: f32,
+    pub font_size: f32,
+    pub line_height: f32,
+}
+
+impl MenuBarMetric {
+    pub fn resolve(tokens: &Tokens) -> Self {
+        Self {
+            height: tokens.control_height,
+            padding_inline: tokens.padding_xs,
+            gap: tokens.margin_xxs / 2.,
+            item_padding_inline: tokens.padding,
+            item_radius: tokens.border_radius_sm,
+            indicator_width: tokens.control_height * 0.45,
+            indicator_height: tokens.line_width * 2.,
+            font_size: tokens.font_size,
+            line_height: tokens.font_height,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ToolbarMetric {
+    pub height: f32,
+    pub padding: f32,
+    pub gap: f32,
+    pub item_padding_inline: f32,
+    pub item_radius: f32,
+    pub icon_size: f32,
+    pub separator_length: f32,
+    pub separator_margin: f32,
+    pub font_size: f32,
+    pub line_height: f32,
+}
+
+impl ToolbarMetric {
+    pub fn resolve(tokens: &Tokens) -> Self {
+        Self {
+            height: tokens.control_height,
+            padding: tokens.padding_xs,
+            gap: tokens.margin_xxs,
+            item_padding_inline: tokens.padding_sm,
+            item_radius: tokens.border_radius_sm,
+            icon_size: tokens.font_size_lg,
+            separator_length: tokens.font_height_lg,
+            separator_margin: tokens.margin_xxs,
+            font_size: tokens.font_size,
+            line_height: tokens.font_height,
+        }
+    }
+}
+
 /// Upload Dragger 的度量：对齐 antdv-next `upload/style/dragger.js`。
 ///
 /// 内边距 `padding`；图标 `fontSizeHeading3 * 2 = 48`、下距 `margin`；
@@ -3393,6 +3453,34 @@ pub fn layout_metric(tokens: &Tokens) -> LayoutMetric {
         trigger_color: tokens.color_text_light_solid,
         light_trigger_bg: tokens.color_bg_container,
         light_trigger_color: tokens.color_text,
+    }
+}
+
+/// 状态栏度量：高 controlHeightSM + marginXXS，字号 fontSizeSM，顶分隔线 colorSplit。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StatusBarMetric {
+    pub height: f32,
+    pub padding_inline: f32,
+    pub gap: f32,
+    pub font_size: f32,
+    pub separator_height: f32,
+    pub border_width: f32,
+    pub bg: Hsla,
+    pub fg: Hsla,
+    pub border_color: Hsla,
+}
+
+pub fn status_bar_metric(tokens: &Tokens) -> StatusBarMetric {
+    StatusBarMetric {
+        height: tokens.control_height_sm + tokens.margin_xxs,
+        padding_inline: tokens.padding_xs,
+        gap: tokens.margin_sm,
+        font_size: tokens.font_size_sm,
+        separator_height: tokens.font_size_sm,
+        border_width: tokens.line_width,
+        bg: tokens.color_bg_container,
+        fg: tokens.color_text_secondary,
+        border_color: tokens.color_split,
     }
 }
 

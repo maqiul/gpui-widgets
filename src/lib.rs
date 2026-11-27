@@ -26,6 +26,7 @@ pub mod controls {
     pub mod slider;
     pub mod stepper;
     pub mod switch;
+    pub mod toolbar;
 }
 pub use controls::*;
 
@@ -35,6 +36,7 @@ pub mod input {
     pub mod hotkey_input;
     pub mod mentions;
     pub mod number_input;
+    pub mod otp_input;
     pub mod password_input;
     pub mod search_input;
     pub mod tag_input;
@@ -67,8 +69,10 @@ pub use pickers::*;
 /// 布局与容器：栅格 / 分隔 / 表单 / 卡片 / 列表。
 pub mod containers {
     pub mod accordion;
+    pub mod affix;
     pub mod anchor;
     pub mod card;
+    pub mod flex;
     pub mod form;
     pub mod form_item;
     pub mod grid;
@@ -76,6 +80,7 @@ pub mod containers {
     pub mod list;
     pub mod space;
     pub mod splitter;
+    pub mod status_bar;
 }
 pub use containers::*;
 
@@ -83,6 +88,7 @@ pub use containers::*;
 pub mod navigation {
     pub mod breadcrumb;
     pub mod menu;
+    pub mod menu_bar;
     pub mod nav_menu;
     pub mod pagination;
     pub mod segmented;
@@ -97,7 +103,9 @@ pub mod feedback {
     pub mod drawer;
     pub mod empty;
     pub mod modal;
+    pub(crate) mod notice_timer;
     pub mod notification;
+    pub mod notification_center;
     pub mod popconfirm;
     pub mod progress;
     pub mod result;
@@ -126,10 +134,12 @@ pub mod display {
     pub mod carousel;
     pub mod countdown;
     pub mod descriptions;
+    pub mod diff;
     pub mod image;
     pub mod kbd;
     pub mod link;
     pub mod markdown;
+    pub mod markdown_editor;
     pub mod misc;
     pub mod qrcode;
     pub mod rating;
@@ -138,6 +148,7 @@ pub mod display {
     pub mod table;
     pub mod tag;
     pub mod timeline;
+    pub mod tree_table;
     pub mod typography;
     pub mod upload;
     pub mod upload_list;
@@ -184,11 +195,12 @@ pub use charts::*;
 pub mod theme;
 
 pub use accordion::{Accordion, AccordionItem};
+pub use affix::Affix;
 pub use alert::{Alert, AlertVariant};
 pub use anchor::{Anchor, AnchorItem};
 pub use autocomplete::Autocomplete;
 pub use avatar::Avatar;
-pub use badge::{Badge, BadgeVariant, CountBadge};
+pub use badge::{Badge, BadgeSize, BadgeStatus, BadgeVariant, CountBadge};
 pub use breadcrumb::Breadcrumb;
 pub use bubble::{Bubble, BubblePlacement, BubbleVariant};
 pub use button::{Button, ButtonShape, ButtonSize, ButtonVariant};
@@ -211,11 +223,13 @@ pub use conversations::{ConversationItem, Conversations};
 pub use countdown::Countdown;
 pub use date_picker::{Date, DatePicker};
 pub use descriptions::Descriptions;
+pub use diff::{DiffKind, DiffLine, DiffMode, DiffStats, DiffView, diff_lines, diff_stats};
 pub use display::image::ImageView;
 pub use drawer::{Drawer, DrawerPlacement};
 pub use drop_zone::DropZone;
 pub use empty::Empty;
 pub use file_picker::FilePicker;
+pub use flex::Flex;
 pub use float_button::FloatButton;
 pub use form::{Form, Rule, validate};
 pub use form_item::FormItem;
@@ -230,13 +244,20 @@ pub use layout::{Content, Footer, Header, Layout, Sider};
 pub use link::Link;
 pub use list::{List, ListItem};
 pub use markdown::Markdown;
+pub use markdown_editor::{MarkdownEditor, MarkdownEditorMode};
 pub use mentions::Mentions;
 pub use menu::{DropdownMenu, MenuItem};
+pub use menu_bar::{MenuBar, MenuBarItem};
 pub use misc::{Divider, card, section_title};
 pub use modal::Modal;
 pub use nav_menu::{MenuEntry, NavMenu};
-pub use notification::{NotificationItem, NotificationStack, NotificationVariant};
+pub use notification::{
+    NotificationConfig, NotificationDismissed, NotificationHost, NotificationItem,
+    NotificationStack, NotificationVariant, default_notification_duration,
+};
+pub use notification_center::NotificationCenter;
 pub use number_input::NumberInput;
+pub use otp_input::OtpInput;
 pub use pagination::Pagination;
 pub use password_input::PasswordInput;
 pub use pie_chart::{PieChart, PieDatum};
@@ -263,10 +284,11 @@ pub use space::Space;
 pub use spinner::Spinner;
 pub use splitter::Splitter;
 pub use statistic::{Statistic, Trend};
+pub use status_bar::StatusBar;
 pub use stepper::Stepper;
 pub use steps::{StepStatus, Steps, StepsStatus, StepsVariant};
 pub use switch::Switch;
-pub use table::Table;
+pub use table::{Table, table_filtered_indices, table_fixed_column_ranges, table_resize_column};
 pub use tabs::Tabs;
 pub use tag::{Tag, TagColor};
 pub use tag_input::TagInput;
@@ -278,14 +300,24 @@ pub use thought_chain::{ThoughtChain, ThoughtNode, ThoughtStatus};
 pub use time_picker::TimePicker;
 pub use timeline::{Timeline, TimelineColor, TimelineItem};
 pub use title_bar::{TitleBar, WindowIconKind, transparent_titlebar_options};
-pub use toast::{ToastItem, ToastStack, ToastVariant};
+pub use toast::{
+    ToastConfig, ToastDismissed, ToastHost, ToastItem, ToastStack, ToastVariant,
+    default_toast_duration,
+};
+pub use toolbar::{Toolbar, ToolbarItem};
 pub use tooltip::Tooltip;
 pub use tour::{Tour, TourStep};
 pub use transfer::{Transfer, TransferItem};
 pub use transfer_manager::{TransferDirection, TransferManager, TransferStatus, TransferTask};
 pub use tree::{Tree, TreeDrop, TreeNode, find_node_mut, take_node};
 pub use tree_select::TreeSelect;
-pub use typography::{Paragraph, Text, Title};
+pub use tree_table::{
+    TreeTable, TreeTableNode, tree_table_cascade_check, tree_table_check_state,
+    tree_table_navigation_target, tree_table_toggle_expanded, tree_table_visible_ids,
+};
+pub use typography::{
+    CopyConfig, EditableConfig, EllipsisConfig, Paragraph, Text, Title, truncate_text,
+};
 pub use upload::Upload;
 pub use upload_list::{UploadFile, UploadList, UploadStatus};
 #[cfg(windows)]

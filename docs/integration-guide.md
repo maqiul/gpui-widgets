@@ -2,7 +2,7 @@
 
 # gpui-widgets 外部项目集成指南
 
-> 配套文档：[README.md](../README.md) 提供 98 个控件的完整一览表；本文专注「如何在自己的 Rust 项目里引入并正确使用这些控件」。
+> 配套文档：[README.md](../README.md) 提供 103 个控件的完整一览表；本文专注「如何在自己的 Rust 项目里引入并正确使用这些控件」。
 > 文中完整示例与 [`examples/integration.rs`](../examples/integration.rs) 一致，已通过编译验证，可直接复制使用。
 
 ## 1. 引入依赖
@@ -108,6 +108,7 @@ Select::new("city", ["北京", "上海", "广州", "深圳"], self.city)
 | `TextInput` | `cx.new(\|cx\| TextInput::new(cx).placeholder("…"))` | `read(cx).text()` / `update(cx, \|i, cx\| i.set_text("…", window, cx))` |
 | `TextArea` | `cx.new(\|cx\| TextArea::new(cx).height(px(120.)))` | `text()` / `set_text()` / `set_caret()` / `scroll_handle()` / `scroll_to_line()` / `set_scroll_offset()` / `scroll_metrics()` |
 | `PasswordInput` / `SearchInput` / `Autocomplete` / `Mentions` | 同上，各自 `::new(cx)` | 同 TextInput |
+| `OtpInput` | `cx.new(\|cx\| OtpInput::new(cx, 6))` | `value()` / `set_value(s, cx)` / `clear(cx)` / `is_complete()` |
 | `NumberInput` | `NumberInput::new(cx)` | `value()` / `set_value()` |
 | `TagInput` | `TagInput::new(cx).initial_tags(…)` | `tags()` |
 | `CommandPalette` | `CommandPalette::new(cx, items)` | `open(window, cx)` / `close(cx)` |
@@ -154,19 +155,23 @@ let text = self.name.read(cx).text();
   `disabled()/readonly()/error()/allow_clear()/max_length()/prefix()/suffix()`；Select
   `value(Option<usize>)/allow_clear()/searchable()`；Checkbox `indeterminate()`；Switch `small()/loading()`；
   Table `column_widths()/sortable()+sort()+on_sort()/selectable()+selected_rows()+on_selected_rows()`（空数据自动空态）；
-  Tabs `disabled_tabs()/closable()+on_close()/card()`；Tag `color(TagColor)/bordered()`；Badge/CountBadge `color()`
-  （CountBadge 另有 `offset(x, y)`）；Modal `width()/closable()/mask_closable()`；Drawer
+  Tabs `disabled_tabs()/closable()+on_close()/card()`；Tag `color(TagColor)/bordered()`；Badge
+  `status(BadgeStatus)/text()/title()/aria_label()`，CountBadge 另有 `size(BadgeSize)/title()/aria_label()/offset(x, y)`；Modal `width()/closable()/mask_closable()`；Drawer
   `placement(DrawerPlacement::Left)/closable()/mask_closable()`；DatePicker `disabled()/allow_clear()+on_clear()`；
   Slider `vertical()/marks([(值, 标签)])`；Spinner `color()`。排序/多选等均为受控模式，回调里回写状态后 `cx.notify()`。
 - **深化功能属性**：Table `pagination(page, page_size)+on_page_change()`、`row_detail()+expanded_rows()+on_expand()`、
-  `fixed_left()`；Tree `checkable()+checked()+on_check()`、`draggable()+on_drop_node(&TreeDrop)`；
+  `fixed_left()/fixed_right_columns(n)`、`resizable_columns(true)+on_column_resize()`、
+  `filterable()+filter()+on_filter_change()`、`editable_columns()+editing()+on_edit_start()/on_cell_change()/on_edit_end()`；
+  Tree `checkable()+checked()+on_check()`、`draggable()+on_drop_node(&TreeDrop)`；
+  TreeTable `expanded()/selected()/checked()` 三集合受控，`virtualized(height)` 固定行高虚拟滚动；
   FormItem `label_width()`（横向标签）/ `error_opt()`；新控件 `Form`（`inline()/gap()`）、
   `Rule` + `validate()`、`DateRangePicker`。详见下方「深化功能受控约定」。
 - **属性对齐扩充**：Button `round()/circle()`；Steps `vertical()/small()/progress_dot()/descriptions()`；
   Pagination `simple()/small()`；Tabs `centered()`；Segmented `small()/large()/block()`；
   Switch `text(on, off)`；Timeline `alternate()/pending()`；Descriptions `vertical()`；
   Table `bordered()/show_header(bool)`；ProgressBar `steps(n)`；Alert `banner()`；Spinner `tip()`；
-  Avatar `square()`；Card `hoverable()`。均为纯展示属性，不改变受控约定。
+  Avatar `image()/image_error()/on_image_error()` 为受控图片失败态，`size()` 同步缩放文字；Card `hoverable()`。
+  其中 `square()` 等纯展示属性不改变受控约定。
 - **浮层渲染位置**：Modal / Drawer / ToastStack / NotificationStack / Tour 放在**根视图最后一个子元素、滚动容器之外**（内部 deferred 置顶），否则会被滚动裁剪或盖不住内容。
 - **唯一 id**：构造函数带 id 的控件（Slider / Splitter / ContextMenu / Carousel / NavMenu /
   Cascader / TimePicker / TreeSelect / Transfer / Popconfirm 等）同一窗口内 id 不要重复。
@@ -208,7 +213,7 @@ let now: Theme = theme::current();
 
 ### 深化功能受控约定（Table / Form / Tree / DateRangePicker）
 
-**Table 分页 / 展开行 / 固定左列**：
+**Table 分页 / 展开行 / 固定左右列 / DataGrid 能力**：
 
 ```rust
 Table::new("members", ["姓名", "城市"], rows)
@@ -220,9 +225,12 @@ Table::new("members", ["姓名", "城市"], rows)
 ```
 
 - 分页后排序 / 选中 / 展开 / 行点击回调仍用**全局行下标**；表头全选只作用当前页。
-- `fixed_left()` 固定首数据列（含勾选列），其余列横向滚动；要求统一行高 37px，
-  未指定列宽的列默认 120px；**与 `row_detail()` 互斥**（同时设置时展开行不生效）；
+- `fixed_left()` 固定首数据列（含勾选列），`fixed_right_columns(n)` 固定末尾 n 列，其余列横向滚动；
+  要求统一行高 37px，未指定列宽的列默认 120px；**与 `row_detail()` 互斥**（同时设置时展开行不生效）；
   右栏下方内置主题化横向滚动条（滑块拖拽 / 轨道点击跳转 / 滚轮，见 Scrollbar 小节）。
+- DataGrid P2：`filterable()` 在分页前做大小写不敏感筛选；`resizable_columns(true)` 需用
+  `on_column_resize()` 回写完整列宽；`editable_columns()` + `editing()` 控制编辑单元格，双击或聚焦后按
+  Enter/Space 进入，Enter 或失焦提交。完整示例见 `examples/data_grid.rs`。
 
 **Form 校验（受控 helper，控件不持有校验状态）**：
 
@@ -634,6 +642,10 @@ cd d:\gpui\widgets
 cargo run --example integration   # 本文完整示例
 cargo run --example minimal       # 最小依赖示例
 cargo run --example gallery       # 98 控件全量展示（左侧 9 类分类导航）
+cargo run --example otp_input     # OTP 逐格输入与键盘 / 粘贴
+cargo run --example notification_center # 通知中心、虚拟列表与已读 / 删除交互
+cargo run --example tree_table      # 树形表格、级联勾选、键盘导航与虚拟滚动
+cargo run --example data_grid      # Table 筛选、列宽拖拽、固定左右列与单元格编辑
 ```
 
 外部独立项目参考 `d:\gpui\consumer-demo`（仅依赖 `gpui-widgets` path 引用，已经回归验证）。

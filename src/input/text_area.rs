@@ -202,6 +202,7 @@ pub struct TextArea {
     status: InputStatus,
     size: InputSize,
     disabled: bool,
+    a11y_semantics: Option<crate::a11y::Semantics>,
 }
 
 impl TextArea {
@@ -235,6 +236,7 @@ impl TextArea {
             status: InputStatus::default(),
             size: InputSize::default(),
             disabled: false,
+            a11y_semantics: None,
         }
     }
 
@@ -328,14 +330,20 @@ impl TextArea {
         self
     }
 
+    /// 包装控件替换多行输入的可访问性标签与稳定 id。
+    pub(crate) fn set_a11y_semantics(&mut self, semantics: crate::a11y::Semantics) {
+        self.a11y_semantics = Some(semantics);
+    }
+
     fn semantics(&self, default_id: SharedString) -> Semantics {
         let label: SharedString = if self.placeholder.is_empty() {
             "多行文本输入".into()
         } else {
             self.placeholder.clone()
         };
-        Semantics::new(Role::MultilineTextInput, label)
-            .id(default_id)
+        self.a11y_semantics
+            .clone()
+            .unwrap_or_else(|| Semantics::new(Role::MultilineTextInput, label).id(default_id))
             .value(self.content.clone())
             .placeholder(self.placeholder.clone())
             .disabled(self.disabled)

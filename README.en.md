@@ -2,7 +2,7 @@
 
 # gpui-widgets
 
-A general-purpose widget library written in Rust and built on [GPUI](https://gpui.rs), Zed's GPU-accelerated UI framework. It includes **98 documented controls / 101 entries, plus 8 public advanced/host modules**, covering navigation, display, data-entry, and feedback components aligned with the Ant Design component overview, as well as later additions for property alignment, data visualization, AI conversations, and performance monitoring. Other projects can depend on it directly.
+A general-purpose widget library written in Rust and built on [GPUI](https://gpui.rs), Zed's GPU-accelerated UI framework. It includes **107 documented controls / 110 entries, plus 8 public advanced/host modules**, covering navigation, display, data-entry, and feedback components aligned with the Ant Design component overview, as well as later additions for property alignment, data visualization, AI conversations, and performance monitoring. Other projects can depend on it directly.
 
 It depends on the publicly released `gpui-pre = "=0.3.14"` on crates.io (a third-party repackaging of the Zed GPUI snapshot; the crate's library name is still `gpui`), so **no local Zed source code is required**.
 
@@ -16,12 +16,12 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 
 | Category | Included Widgets |
 |---|---|
-| General | `Button` `Link` `Title/Paragraph/Text` `Kbd` |
+| General | `Button` `Link` `Title/Paragraph/Text` `Kbd` `Toolbar` |
 | Layout | `Row/Col` `Header/Sider/Content/Footer` `Space` `Splitter` `Scrollbar` |
-| Navigation | `Anchor` `Breadcrumb` `DropdownMenu` `NavMenu` `Pagination` `Steps` `Tabs` `ContextMenu` `FloatButton` `CommandPalette` |
-| Data Entry | `TextInput` `TextArea` `PasswordInput` `SearchInput` `NumberInput` `Stepper` `TagInput` `Autocomplete` `Mentions` `Select` `MultiSelect` `Cascader` `TreeSelect` `Checkbox` `Radio` `Switch` `Slider` `Rating` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `Upload` `UploadList` `FilePicker` `Form` `FormItem` |
-| Data Display | `Table` `Tree` `List` `Card` `Descriptions` `Statistic` `Countdown` `Calendar` `Timeline` `Tag` `Badge` `CountBadge` `Avatar` `ImageView` `VideoPlayer` `Carousel` `BarChart` `LineChart` `Sparkline` `PieChart` `GaugeChart` `ScatterChart` `Heatmap` `RadarChart` `FunnelChart` `QRCode` `CodeBlock` `Empty` `Segmented` `Accordion` `Tooltip` `Popover` `Tour` |
-| Feedback | `Alert` `Modal` `Drawer` `ToastStack` `NotificationStack` `Popconfirm` `ProgressBar` `RingProgress` `Result` `Skeleton` `Spinner` `Watermark` |
+| Navigation | `Anchor` `Breadcrumb` `DropdownMenu` `MenuBar` `NavMenu` `Pagination` `Steps` `Tabs` `ContextMenu` `FloatButton` `CommandPalette` |
+| Data Entry | `TextInput` `TextArea` `PasswordInput` `OtpInput` `SearchInput` `NumberInput` `Stepper` `TagInput` `Autocomplete` `Mentions` `Select` `MultiSelect` `Cascader` `TreeSelect` `Checkbox` `Radio` `Switch` `Slider` `Rating` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `Upload` `UploadList` `FilePicker` `Form` `FormItem` |
+| Data Display | `Table` `TreeTable` `Tree` `List` `Card` `Descriptions` `Statistic` `Countdown` `Calendar` `Timeline` `Tag` `Badge` `CountBadge` `Avatar` `ImageView` `VideoPlayer` `Carousel` `BarChart` `LineChart` `Sparkline` `PieChart` `GaugeChart` `ScatterChart` `Heatmap` `RadarChart` `FunnelChart` `QRCode` `CodeBlock` `DiffView` `MarkdownEditor` `Empty` `Segmented` `Accordion` `Tooltip` `Popover` `Tour` |
+| Feedback | `Alert` `Modal` `Drawer` `ToastStack` `ToastHost` `NotificationStack` `NotificationHost` `NotificationCenter` `Popconfirm` `ProgressBar` `RingProgress` `Result` `Skeleton` `Spinner` `Watermark` |
 | AI Conversation | `Welcome` `Prompts` `Bubble` `Sender` `Conversations` `ThoughtChain` |
 | Utilities and Theming | `misc` `theme` `FpsMeter` |
 
@@ -31,8 +31,9 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 |---|---|
 | `Button` | Button: `primary()` / `secondary()` / `ghost()` / `danger()` variants, `small()` / `large()` sizes, `loading()` state (blocks clicks), `block()` full-width layout, `icon()` leading icon character, `round()` pill shape / `circle()` circular shape, `disabled()` |
 | `Link` | Link: underline on hover; `href()` opens the browser on click / `on_click()` custom behavior / `disabled()` |
-| `Title` / `Paragraph` / `Text` | Typography trio: heading levels 1~5 / paragraph / inline text (`strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()`) |
+| `Title` / `Paragraph` / `Text` | Typography trio: heading levels 1~5 / paragraph / inline text, with controlled editing, copy feedback, Unicode grapheme-cluster truncation and expansion, plus `strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()` |
 | `Kbd` | Keycap: `Kbd::new("Esc")` for a single key / `Kbd::combo("Ctrl+K")` automatically splits key combinations |
+| `Toolbar` | Toolbar: horizontal / `vertical()` action collection; `ToolbarItem` supports icons / selected / disabled states, `separator()` / `spacer()` entries, and arrow-key plus Home / End navigation |
 
 ### Layout
 
@@ -51,6 +52,7 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `Anchor` | Anchor navigation: nested `AnchorItem` entries, left indicator track + current highlight, controlled `active()` + `on_click(&SharedString)`; scroll positioning is handled by the caller |
 | `Breadcrumb` | Breadcrumb navigation: the last item represents the current page and is not clickable; `on_click(&usize)` reports intermediate levels |
 | `DropdownMenu` | Action menu: any trigger element + a list of `MenuItem` entries (supports separators / `danger()` / `disabled()`); closes after an action is clicked |
+| `MenuBar` | Application menu bar: controlled expansion / selection, hover switching, reusable multilevel `MenuItem` submenus, and arrow-key / Home / End / Esc navigation |
 | `NavMenu` | Navigation menu: `MenuEntry` supports nested submenus, icons, and disabled states; selected and expanded sets are controlled; `on_select()` / `on_toggle()` |
 | `Pagination` | Pagination: page numbers start at 1; automatically collapses into ellipses when there are many pages; boundary buttons are disabled; `simple()` compact mode, `small()` small size |
 | `Steps` | Steps: completed ✓ / current number / gray pending state, controlled `current()`, `vertical()` vertical layout, `small()` small size, `progress_dot()` dotted style, `descriptions()` step descriptions |
@@ -66,6 +68,7 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `TextInput` | Single-line input: caret / selection / clipboard / Chinese input method (IME); is itself an `Entity`; `bare()` removes the border for wrapping, `masked()` masks the display; `disabled()` / `readonly()` / `error()` states, `allow_clear()` ✕ clearing, `max_length()` character limit, `prefix()` / `suffix()` affixes |
 | `TextArea` | Multiline input: hard line breaks / cross-line selection / clipboard / IME / automatic caret scrolling, with a built-in vertical scrollbar; `height()` / `scroll_handle()` / `scroll_to_line()` / `set_scroll_offset()` / `scroll_metrics()`; is itself an `Entity` and additionally requires `text_area::bind_keys` |
 | `PasswordInput` | Password input: masked display + plaintext toggle button; is itself an `Entity` |
+| `OtpInput` | One-time password: per-cell entry / whole-string paste / arrow-key navigation / masking / completion callback; is itself an `Entity` |
 | `SearchInput` | Search input: custom-drawn magnifying-glass icon + ✕ clearing, `on_search()` triggered by Enter; is itself an `Entity` |
 | `NumberInput` | Number input: ▲▼ buttons / up and down arrow keys step the value, `min()` / `max()` / `step()`; invalid input does not trigger a callback; is itself an `Entity` |
 | `Stepper` | Number stepper: − / + buttons, `min()` / `max()` / `step()` / `disabled()`; boundary states are automatically disabled |
@@ -96,8 +99,9 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 
 | Widget | Description |
 |---|---|
-| `Table` | Data table: `column_widths()` column widths (equal by default), `striped()` zebra stripes, controlled row selection + `on_row_click()`; header sorting via `sortable()` + `sort()` + `on_sort()`, multi-selection via `selectable()` + `selected_rows()` + `on_selected_rows()`, automatic empty state for no data; built-in pagination via `pagination(page, page_size)` + `on_page_change()` (callbacks still use global indices, and Select All affects only the current page); expandable rows via `row_detail()` + `expanded_rows()` + `on_expand()`, `fixed_left()` pins the first column + horizontal scrolling (mutually exclusive with expandable rows), `bordered()` full borders, `show_header(bool)` header visibility |
+| `Table` | Data table: `column_widths()` column widths (equal by default), `striped()` zebra stripes, controlled row selection + `on_row_click()`; header sorting via `sortable()` + `sort()` + `on_sort()`, multi-selection via `selectable()` + `selected_rows()` + `on_selected_rows()`, automatic empty state for no data; built-in pagination via `pagination(page, page_size)` + `on_page_change()` (callbacks still use global indices, and Select All affects only the current page); expandable rows via `row_detail()` + `expanded_rows()` + `on_expand()`, `fixed_left()` / `fixed_right_columns(n)` pin columns on either side + horizontal scrolling (mutually exclusive with expandable rows), `resizable_columns(true)` enables pointer/keyboard column resizing, `filterable()` + `filter()` + `on_filter_change()` filtering, `editable_columns()` + `editing()` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()` controlled cell editing, `bordered()` full borders, `show_header(bool)` header visibility |
 | `Tree` | Tree widget: nested `TreeNode` entries (`Clone`), controlled expanded set / selected id, `on_toggle()` / `on_select()`; `checkable()` + `checked()` + `on_check()` parent-child checkbox synchronization, `draggable()` + `on_drop_node(&TreeDrop)` drag-to-move (the caller restructures the tree with `take_node()` / `find_node_mut()` / `push_child()`) |
+| `TreeTable` | Hierarchical table: multi-column `TreeTableNode` rows with controlled expanded / selected / checked sets and stable node-ID callbacks; parent-child checkbox synchronization and mixed state; arrow / Home / End / Left / Right / Enter / Space keyboard operation; fixed-row-height `virtualized(height)` scrolling |
 | `List` | List: `ListItem` title / description / avatar / `extra()` right-side element, `header()` / `footer()` |
 | `Card` | Card: title + `extra()` top-right action + `cover()` cover + `action()` bottom action area, `bordered()`, `hoverable()` raised shadow on hover |
 | `Descriptions` | Description list: `item(label, value)` key-value pairs, `column()` number of columns, `bordered()` table style, `vertical()` vertical layout (label above value) |
@@ -106,9 +110,9 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `Calendar` | Calendar: large month-view cells + 12 mini month calendars in year view; month / selected date / mode are controlled, with `on_month_change()` / `on_select()` / `on_mode_change()` |
 | `Timeline` | Timeline: `TimelineItem` title / description / time / node color, `alternate()` alternates left and right, `pending()` ghost node |
 | `Tag` | Tag: more compact than a badge, `on_close()` shows a ✕ remove button, `color(TagColor)` provides 8 preset colors, `bordered()` toggles the border |
-| `Badge` | Badge: `info()` / `success()` / `warning()` / `danger()`, `color()` custom color |
-| `CountBadge` | Numeric badge: displays a count at the top-right of its child, `max()` displays 99+ on overflow, `dot()` red-dot mode, `show_zero()`, `color()` custom background, `offset(x, y)` position offset |
-| `Avatar` | Avatar: circular background + first character of the name; background color is determined by a hash of the name, `size()`, `square()` rounded-square shape |
+| `Badge` | Badge: pill variants or `status(BadgeStatus)` dot + `text()`; `title()` tooltip and `aria_label()` accessible name, with all colors resolved from tokens |
+| `CountBadge` | Numeric badge: top-right count, `max()` overflow as 99+, `dot()` mode, `show_zero()`, `size(BadgeSize::Small)`, custom `color()`, `offset(x, y)`, `title()` and `aria_label()` |
+| `Avatar` | Avatar: first character of the name or an `image()`; falls back to the initial while loading or on failure; controlled `image_error()` + `on_image_error()` callback; `size()` scales text with custom dimensions; `square()` rounded-square shape |
 | `ImageView` | Image: wraps gpui `img`, `from_file()` local file / `from_render()` in-memory frame, `fit_cover()` / `fit_contain()` / `fit_fill()` / `rounded()` / `grayscale()`, with built-in loading and load-failure placeholders |
 | `VideoPlayer` | Video player (**Windows only**): Media Foundation background decoding, built-in play/pause button + draggable progress bar, `play()` / `pause()` / `seek()`; is itself an `Entity` |
 | `Carousel` | Carousel: `ImageSource` list, ‹ › cyclic navigation + bottom-dot direct access + counter, controlled `current()`; requires a unique id |
@@ -123,6 +127,8 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `FunnelChart` | Funnel chart: centered trapezoids stacked by `FunnelStage` + stage labels + conversion rate, `height()` / `gap()` |
 | `QRCode` | QR code: pure Rust encoding (byte mode / ECC L / version 1~6), `size()` pixel dimensions, custom rendering with no external dependencies |
 | `CodeBlock` | Code block: line-by-line rendering in a monospace font + language label + one-click copy button |
+| `DiffView` | Line-level code diff: Myers shortest edit path, split/unified modes, addition/deletion statistics, source line numbers, and theme-aware change backgrounds; `diff_lines()` / `diff_stats()` are pure functions |
+| `MarkdownEditor` | Markdown source editor with live preview: split/source-only/preview-only modes, controlled `text` + `on_change`, reuses `TextArea` and `Markdown`, with line numbers and scrolling |
 | `Empty` | Empty state: icon + title + `description()` + `action()` action area |
 | `Segmented` | Segmented selector: mutually exclusive options inside a rounded container, suitable for 2~5 short options, `small()` / `large()` sizes, `block()` full-width layout |
 | `Accordion` | Accordion group: multiple panels can be expanded simultaneously, `AccordionItem` title + arbitrary content, controlled expanded set |
@@ -137,8 +143,11 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `Alert` | Alert: `info()` / `success()` / `warning()` / `danger()`, `description()` / `on_close()`, `banner()` full-width mode (no border or rounded corners) |
 | `Modal` | Modal dialog: overlay + centered card, `width()` card width, `closable()` / `mask_closable()` control ✕ and overlay closing, `footer()` action area, `id()` unique instance id (derived from the title by default); must be rendered outside the scrolling container |
 | `Drawer` | Drawer: overlay + side-sliding panel, `placement(DrawerPlacement)` left / right (right by default), `width()` / `footer()`, `closable()` / `mask_closable()`, `id()` unique instance id (derived from the title by default); must be rendered outside the scrolling container |
-| `ToastStack` | Toast stack: top-right overlay, four `ToastItem` types, controlled entries, ✕ removal |
-| `NotificationStack` | Notification stack: top-right overlay, `NotificationItem` title / description / type / `action()` button, controlled entries |
+| `ToastStack` | Toast stack: top-center overlay, four `ToastItem` types, stable keys + `on_dismiss`, controlled entries, ✕ removal |
+| `ToastHost` | Self-managed toasts: default 3s / 4.5s / 6s expiry, hover pause, stable keys, `max_count` drops oldest, one ticker; `Duration::ZERO` is persistent |
+| `NotificationStack` | Notification stack: top-right overlay, `NotificationItem` title / description / type / `action()` button, stable keys + `on_dismiss`, controlled entries |
+| `NotificationHost` | Self-managed notifications: default 4.5s expiry, hover pause, stable keys, `max_count` drops oldest, one ticker; `Duration::ZERO` is persistent |
+| `NotificationCenter` | Notification center: right-side overlay panel with a virtual history list, unread count, selection / read / remove / mark-all-read, and arrow-key plus Home / End navigation |
 | `Popconfirm` | Popconfirm: wraps a trigger element, `description()` / `ok_text()` / `cancel_text()`, `on_confirm()` / `on_cancel()` |
 | `ProgressBar` | Progress bar (0.0 ~ 1.0), `steps(n)` segmented progress |
 | `RingProgress` | Circular progress: custom-drawn arc track + progress arc, `size()` / `thickness()` / `color()` / `label()` center text |
@@ -168,7 +177,7 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 
 ## Advanced and Host Modules
 
-The following 8 modules are public and fully covered in the [controls reference](docs/controls-reference.en.md#x-advanced-and-host-modules). They are not folded into the 98 documented controls / 101 entries, and the total is not presented as 106.
+The following 8 modules are public and fully covered in the [controls reference](docs/controls-reference.en.md#x-advanced-and-host-modules). They are not folded into the 107 documented controls / 110 entries, and the total is not presented as 111.
 
 | Module | State Model | Purpose |
 |---|---|---|
@@ -256,6 +265,9 @@ See [`examples/minimal.rs`](examples/minimal.rs) for a complete runnable example
 cargo run --example minimal
 cargo run --example integration   # Example accompanying the integration guide
 cargo run --example gallery
+cargo run --example notification_center # Notification center, virtual history, read/remove interactions
+cargo run --example tree_table         # Hierarchical table, cascading checks, keyboard navigation, virtual scrolling
+cargo run --example data_grid         # Table filtering, column resizing, fixed columns, and cell editing
 cargo run --example gen_assets   # Regenerate the demo video examples/assets/sample.avi (already included in the repository)
 ```
 
@@ -263,19 +275,20 @@ cargo run --example gen_assets   # Regenerate the demo video examples/assets/sam
 
 - **Stateless widgets** (Button / Checkbox / Switch / Radio / Slider / ProgressBar / Badge /
   Tabs / Segmented / Select / Alert / Spinner / Avatar / Tag / Stepper / Accordion /
-  Breadcrumb / Pagination / Rating / Table / Tree / DropdownMenu / Popover /
+  Breadcrumb / Pagination / Rating / Table / TreeTable / Tree / DropdownMenu / Popover /
   DatePicker / ColorPicker / ToastStack / NavMenu / Card / Descriptions / List /
   CountBadge / Calendar / QRCode / Cascader / TimePicker / TreeSelect / Transfer /
-  FormItem / UploadList / Popconfirm / NotificationStack / Tour / Anchor / Upload):
+  FormItem / UploadList / Popconfirm / NotificationStack / NotificationCenter / Tour / Anchor / Upload):
   The caller supplies values and callbacks, stores state in its own view `Entity`, and calls `cx.notify()` after changing state in a callback.
   Callback signatures consistently use `Fn(&E, &mut Window, &mut App)` and can be constructed directly with `cx.listener(...)`.
+- **ToastHost / NotificationHost are self-managed Entities**: create them with `cx.new(|cx| ToastHost::new(cx))` / `NotificationHost::new(cx)` and mount `.clone()` during render. Use `show` / `show_with` to present notices. Their `on_dismiss` callback is `Fn(&Event, &mut App)` (no Window), so update the parent through `weak_entity()` or an entity handle. Render them as the last child of the root view, outside the scroll container.
 - **Controlled expanded state for Select / MultiSelect**: the parent view holds `open: bool`
   and writes it back with `.open(self.open)` + `.on_open_change(...)`; single selection uses `.on_select(&usize)`,
   while multiple selection uses `.on_change(&Vec<usize>)`. The menu width defaults to the trigger width and can be overridden with `.menu_width(px(...))`;
   the menu opens 4px below the trigger and automatically flips above it when it will not fit below the window.
   Single selection additionally supports a null selection via `.value(Option<usize>)`, ✕ clearing via `.allow_clear(true)` (`on_clear` is a 2-argument callback),
   and option filtering through a search box at the top of the menu via `.searchable(true)`.
-- **Render location for Modal / Drawer / ToastStack / NotificationStack / Tour**: place them as the last child of the root view, outside the scrolling container;
+- **Render location for Modal / Drawer / ToastStack / ToastHost / NotificationStack / NotificationHost / NotificationCenter / Tour**: place them as the last child of the root view, outside the scrolling container;
   **stacked dialogs/drawers**: element ids for ✕ and the overlay are derived from the title by default, so different titles do not interfere with one another;
   when titles are identical, each layer must receive a distinct `.id(...)`, otherwise shared interaction state can make the inner ✕ unresponsive while the outer layer enters the active state
   (ids must remain stable across frames; do not use a counter incremented every frame);
@@ -283,6 +296,7 @@ cargo run --example gen_assets   # Regenerate the demo video examples/assets/sam
   use a `cx.entity()` handle and `entity.update(cx, …)` inside the closure;
   `MenuItem::on_click` for DropdownMenu, `on_click` for FloatButton, `on_confirm` / `on_cancel` for Popconfirm,
   `on_close` for Tour, `on_clear` for Select / DatePicker, and `on_click` for Upload use the same signature.
+  `on_mark_all_read` / `on_dismiss` for NotificationCenter use it as well.
 - **Tooltip is a wrapper**: `Tooltip::new("Tooltip text", any widget)`; hover delay and positioning are handled natively by GPUI.
 - **TextInput is a stateful view**: create it with `cx.new(|cx| TextInput::new(cx))`
   and use `.child(input.clone())` in render; read with `input.read(cx).text()`,
@@ -300,8 +314,9 @@ cargo run --example gen_assets   # Regenerate the demo video examples/assets/sam
   when omitted, it defaults to the month of the selected value (or the current month if there is no value); month navigation does not work without `on_month_change`.
   DateRangePicker follows the same convention (the month defaults to the start date's month); the pending start date is persisted by id across frames and automatically discarded when closed or cleared.
 - **Table pagination and fixed columns**: pagination is controlled (page numbers start at 1); callbacks for sorting / selection / expansion always use **global row indices**,
-  and header Select All affects only the current page; `fixed_left()` requires a uniform row height (37px), columns without an explicit width default to 120px,
-  and expandable rows do not work when combined with `row_detail()`.
+  and header Select All affects only the current page; `fixed_left()` / `fixed_right_columns(n)` require a uniform row height (37px), columns without an explicit width default to 120px,
+  and expandable rows do not work when combined with `row_detail()`. `filterable()` filters before pagination; `resizable_columns(true)` requires `on_column_resize()` to write widths back.
+  `editable_columns()` + `editing()` are controlled: double-click or focus a cell and press Enter/Space to edit, then press Enter or blur to commit.
 - **Form validation is a controlled helper**: `validate(&value, &[Rule])` returns the error message for the first failing rule (`Option<SharedString>`),
   which is stored in view state and displayed with `FormItem::error_opt()`; widgets themselves do not hold validation state, and the caller decides when to submit.
 - **Tree node ids**: ids only need to be unique within the same tree; both the expanded set and selected value use ids (`Vec<SharedString>` / `Option<SharedString>`);

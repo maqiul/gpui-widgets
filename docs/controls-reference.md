@@ -2,7 +2,7 @@
 
 # gpui-widgets 控件参考手册
 
-> 本手册逐个说明库内 **98 个已文档化控件 / 101 个条目**，并补充 **8 个公开高级/宿主模块**；每项均给出**定位、创建签名、状态模型、属性、回调（含精确类型）、最小示例、注意事项**。
+> 本手册逐个说明库内 **103 个已文档化控件 / 106 个条目**，并补充 **8 个公开高级/宿主模块**；每项均给出**定位、创建签名、状态模型、属性、回调（含精确类型）、最小示例、注意事项**。
 >
 > 配套文档分工：
 > - [`README.md`](../README.md)：控件分类一览表 + 使用约定（速查）。
@@ -16,9 +16,9 @@
 ## 目录
 
 - [一、核心概念（用任何控件前必读）](#一核心概念用任何控件前必读)
-- [二、通用](#二通用)：Button · Link · Title/Paragraph/Text · Kbd
-- [三、布局](#三布局)：Row/Col · Header/Sider/Content/Footer · Space · Splitter · Scrollbar
-- [四、导航](#四导航)：Anchor · Breadcrumb · DropdownMenu · NavMenu · Pagination · Steps · Tabs · ContextMenu · FloatButton · CommandPalette
+- [二、通用](#二通用)：Button · Link · Title/Paragraph/Text · Kbd · Toolbar
+- [三、布局](#三布局)：Row/Col · Header/Sider/Content/Footer · Space · Splitter · Scrollbar · Flex · Affix · StatusBar
+- [四、导航](#四导航)：Anchor · Breadcrumb · DropdownMenu · MenuBar · NavMenu · Pagination · Steps · Tabs · ContextMenu · FloatButton · CommandPalette
 - [五、数据录入](#五数据录入)：TextInput … FormItem（28 个）
 - [六、数据展示](#六数据展示)：Table … Tour（33 个）
 - [七、反馈](#七反馈)：Alert … Watermark（12 个）
@@ -124,7 +124,7 @@ GPUI 的 hover / 拖拽 / keyed-state 按 `ElementId` 判定。**同一窗口内
 
 ### 1.4 浮层定位机制（共享约定）
 
-Select / MultiSelect / DropdownMenu / Popover / DatePicker / DateRangePicker / ColorPicker / Cascader / TimePicker / TreeSelect / Popconfirm 的浮层共享同一套定位：
+Select / MultiSelect / DropdownMenu / MenuBar / Popover / DatePicker / DateRangePicker / ColorPicker / Cascader / TimePicker / TreeSelect / Popconfirm 的浮层共享同一套定位：
 
 - 贴触发框**下方 4px** 展开；窗口下方放不下时**自动翻转到上方**。
 - **点击外部收起**。
@@ -180,6 +180,28 @@ Button::new("提交").primary().loading(self.submitting)
     .on_click(cx.listener(|this, _, _, cx| { this.submit(cx); }))
 ```
 
+### Toolbar · 工具栏
+
+横向或纵向动作按钮集合，支持选中态、禁用态、分隔线与弹性占位。**受控组件**，**需唯一 id**。
+
+- **创建**：`Toolbar::new(id, vec![ToolbarItem…])`；动作项为 `ToolbarItem::new(id, label)`。
+- **ToolbarItem 属性**：`icon(element)`、`icon_only()`、`selected(bool)`、`disabled(bool)`、`on_click(&mut Window, &mut App)`；结构项为 `ToolbarItem::separator()` / `ToolbarItem::spacer()`。
+- **Toolbar 属性**：`vertical(true)` 切换纵向。
+- **回调**：`on_action(&SharedString, &mut Window, &mut App)` 回传动作项 id；单项 `on_click` 与统一 `on_action` 都会触发。
+- **键盘 / a11y**：`Role::Toolbar`；方向键在动作项间移动焦点，Home / End 跳到首尾；选中项暴露 toggled 状态，禁用项不可聚焦或触发。
+- **注意**：`icon_only()` 的 label 仍用于无障碍名称；未传图标时保留文字兜底。
+
+```rust
+Toolbar::new("editor-tools", vec![
+    ToolbarItem::new("bold", "粗体").icon_only().selected(self.bold),
+    ToolbarItem::separator(),
+    ToolbarItem::spacer(),
+    ToolbarItem::new("save", "保存"),
+])
+.vertical(false)
+.on_action(cx.listener(|this, id, _, cx| { this.run_tool(id); cx.notify(); }))
+```
+
 ### Link · 链接
 
 悬停下划线的文本链接。**受控组件**。
@@ -198,20 +220,50 @@ Link::new("详情").on_click(move |_w, cx| { let _ = entity.update(cx, |this, cx
 
 ### Title / Paragraph / Text · 排版三件套
 
-纯展示文本。**受控组件**（无回调）。
+支持纯展示、受控编辑、复制与截断展开。编辑和展开状态由父视图持有。
 
 - **创建**：
   - `Title::new(level: u8, text)`：1~5 级标题。
   - `Paragraph::new(text)`：段落。
   - `Text::new(text)`：行内文本。
-- **属性**（Text 系）：`strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()`。
-- **注意**：尺寸 / 颜色等可通过 `Styled` 转发（`.text_color()` / `.text_size()` 等）。
+- **通用属性**：`id()` 稳定标识；`title()` 自定义悬浮提示；`editable()` / `copyable()` / `ellipsis()` 交互配置。
+- **受控编辑**：`EditableConfig` 提供 `editing(bool)`、`on_editing_change(&bool)`、`on_change(&str)`、`on_start()`、`on_cancel()`、`on_end()`、`max_length()`。Enter 提交并触发 `on_change`，Escape 取消且不提交。
+- **复制**：`CopyConfig` 提供 `text()` 自定义复制内容、`tooltip()`、`on_copy()`；点击后图标短暂显示 ✓。
+- **截断展开**：`EllipsisConfig` 提供 `max_chars()`、`expandable()`、`expanded(bool)`、`on_expand(&bool)`、`symbol()`、`tooltip()`。按 Unicode 字素簇截断，未展开时默认悬浮显示全文；`truncate_text(text, max_chars, symbol)` 可单独复用。
+- **文本修饰**：`strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()`；`Paragraph` 同样支持全部修饰。
+- **注意**：同一视图内有多个交互实例时应提供唯一 `id()`。尺寸 / 颜色等仍可通过 `Styled` 转发（`.text_color()` / `.text_size()` 等）。
 
 ```rust
-div().flex().flex_col().gap_2()
-    .child(Title::new(2, "章节标题"))
-    .child(Paragraph::new("这是一段说明文字。"))
-    .child(Text::new("行内强调").strong())
+Title::new(2, title)
+    .id("article-title")
+    .editable(
+        EditableConfig::default()
+            .editing(editing)
+            .max_length(80)
+            .on_editing_change(cx.listener(|this, editing, _, cx| {
+                this.editing = *editing;
+                cx.notify();
+            }))
+            .on_change(cx.listener(|this, value: &str, _, cx| {
+                this.title = value.to_string();
+                cx.notify();
+            })),
+    );
+
+Paragraph::new("点击复制这段说明")
+    .copyable(CopyConfig::default().tooltip("复制说明"));
+
+Text::new("这是一段较长的行内文本")
+    .ellipsis(
+        EllipsisConfig::default()
+            .max_chars(12)
+            .expandable(true)
+            .expanded(expanded)
+            .on_expand(cx.listener(|this, expanded, _, cx| {
+                this.expanded = *expanded;
+                cx.notify();
+            })),
+    );
 ```
 
 ### Kbd · 键帽
@@ -299,7 +351,7 @@ GPUI 默认不画滚动条，本控件以库主题色补上可见、可交互的
   1. 绑定的 `ScrollHandle` **必须跨帧持久**（放视图字段或 `window.use_keyed_state`）。
   2. 滚动容器必须接 `.track_scroll(&handle)`——二者共享同一 offset，`set_offset` 才能真正驱动滚动，滚轮也会实时联动滑块。
   3. 父容器须 `.relative()`，滚动条用 `.absolute()` 贴边。
-- **注意**：Table `fixed_left()` 已内置横向滚动条，无需手动加。
+- **注意**：Table `fixed_left()` / `fixed_right_columns(n)` 已内置横向滚动条，无需手动加。
 
 ```rust
 // 视图字段：scroll_handle: ScrollHandle（构造器 ScrollHandle::new() 初始化）
@@ -314,6 +366,68 @@ div().relative().size_full()
         div().absolute().top_0().bottom_0().right_0()
             .child(Scrollbar::vertical("vsb", self.scroll_handle.clone())),
     )
+```
+
+### Flex · 弹性布局
+
+对 GPUI flex 风格的轻量封装，默认横向、不换行、`stretch` 对齐、`justify-start`。**受控组件**（无回调、无需 id）。
+
+- **创建**：`Flex::new()`。
+- **方向 / 换行**：`row()` / `column()`；`wrap()` / `wrap_reverse()` / `nowrap()`。
+- **间距**：`gap(px)`。
+- **交叉轴对齐**：`items_start()` / `items_center()` / `items_end()` / `items_baseline()` / `items_stretch()`。
+- **主轴对齐**：`justify_start()` / `justify_center()` / `justify_end()` / `justify_between()` / `justify_around()` / `justify_evenly()`。
+- **自身伸缩**：`grow(f32)` / `shrink(f32)` / `basis(impl Into<Length>)`。
+- **子元素**：`child(...)` / `children(...)`。
+
+```rust
+Flex::new()
+    .wrap()
+    .gap(px(8.))
+    .items_center()
+    .justify_between()
+    .child("左")
+    .children((1..=4).map(|i| format!("项 {i}")))
+```
+
+### Affix · 吸顶 / 吸底
+
+滚动越过阈值后，把子元素固定到滚动视口顶部或底部。**包装器 / 绑定持久 ScrollHandle**，**需唯一 id**。
+
+- **创建**：`Affix::new(id, child, scroll: ScrollHandle)`。
+- **属性**：`offset_top(px)` 设为吸顶；`offset_bottom(px)` 设为吸底。默认吸顶、偏移 0。
+- **关键约定**：滚动容器必须使用同一个 `ScrollHandle`，并接 `.overflow_y_scroll().track_scroll(&scroll)`；handle 须跨帧持久。
+- **实现**：占位元素保留文档流高度，真实子元素常驻挂载，通过 `anchored()` 窗口坐标定位与 `deferred` 绘制保持在滚动内容之上，因此吸顶 / 吸底切换不会卸载子元素或丢失其内部状态。
+
+```rust
+let scroll = window
+    .use_keyed_state("page-scroll", cx, |_, _| ScrollHandle::new())
+    .read(cx)
+    .clone();
+
+div().id("page").size_full().overflow_y_scroll().track_scroll(&scroll)
+    .child(Affix::new("page-top", toolbar, scroll.clone()).offset_top(px(0.)))
+    .child(long_content)
+```
+
+### StatusBar · 状态栏
+
+应用底部的紧凑信息条，支持文本项、自定义内容、分隔线和弹性留白。**受控组件**（无回调），**需唯一 id**；无障碍角色为 `Status`。
+
+- **创建**：`StatusBar::new(id)`。
+- **内容**：`item(label)` 添加继承状态栏字色 / 字号的文本；`child(...)` / `children(...)` 添加任意元素。
+- **分隔 / 留白**：`separator()` 添加竖向分隔线；`spacer()` 添加弹性留白，把后续项目推到右侧。
+- **视觉**：高度、内边距、字号与颜色均由 `theme::metric::status_bar_metric` 从当前 token 派生。
+
+```rust
+StatusBar::new("editor-status")
+    .item("就绪")
+    .separator()
+    .item("Ln 1, Col 1")
+    .spacer()
+    .item("UTF-8")
+    .separator()
+    .item("Rust")
 ```
 
 ---
@@ -359,16 +473,51 @@ Breadcrumb::new(["首页", "产品", "详情"])
 任意触发元素 + 下拉动作列表。**受控组件**，**需唯一 id**。
 
 - **创建**：`MenuItem::new(label)`；`DropdownMenu::new(id, trigger, items)`。
-- **MenuItem 属性**：分隔线、`danger()` 危险项、`disabled()` 禁用项。
-- **MenuItem 回调**：`on_click(&mut Window, &mut App)`（**2 参**）。
-- **行为**：点动作后自动收起；浮层定位见 [1.4](#14-浮层定位机制共享约定)。
+- **MenuItem 属性**：分隔线、`danger()` 危险项、`disabled()` 禁用项、`submenu(label, items)` 多级子菜单。
+- **MenuItem 回调**：`on_click(&mut Window, &mut App)`（**2 参**）；子菜单父项自身不注册动作回调。
+- **行为**：鼠标移入或点击子菜单父项向右展开，支持递归多级与窗口右缘自动左翻；点动作后自动收起；浮层定位见 [1.4](#14-浮层定位机制共享约定)。
 
 ```rust
 let entity = cx.entity();
 DropdownMenu::new("more", Button::new("更多"), vec![
-    MenuItem::new("编辑").on_click(move |_w, cx| { let _ = entity.update(cx, |this, cx| { … }); }),
+    MenuItem::submenu("导出", vec![
+        MenuItem::new("PNG").on_click({
+            let entity = entity.clone();
+            move |_w, cx| { let _ = entity.update(cx, |this, cx| { … }); }
+        }),
+        MenuItem::new("PDF"),
+    ]),
     MenuItem::new("删除").danger(),
 ])
+```
+
+### MenuBar · 应用菜单栏
+
+桌面应用式顶层菜单，复用 `MenuItem` 的多级子菜单、危险项与禁用项。**受控组件**，**需唯一 id**。
+
+- **创建**：`MenuBarItem::new(id, label)`；有子项时传 `.children(vec![MenuItem…])`，无子项时作为直接动作按钮。
+- **MenuBarItem 属性**：`icon(element)`、`disabled(bool)`、`on_click(&mut Window, &mut App)`。
+- **MenuBar 属性**：`open(Option<usize>)` 控制展开顶层项，`selected(Option<usize>)` 控制选中项，`menu_width(px)` 设置下拉宽度。
+- **回调**：`on_open_change(&Option<usize>, &mut Window, &mut App)`；`on_select(usize, &SharedString, &mut Window, &mut App)` 回传顶层下标与动作 label。
+- **行为**：点击顶层项展开；已有菜单打开时，悬停另一个顶层项直接切换；点击外部或动作项后收起；子菜单沿右侧弹出并在窗口右缘自动左翻。
+- **键盘 / a11y**：`Role::MenuBar` + 顶层 `Role::Button`，暴露 expanded / selected；Left / Right 循环移动，Home / End 跳转，打开时同步切换菜单，Esc 收起。
+- **注意**：`open` 与 `selected` 必须在回调里回写；子菜单父项自身没有动作回调，动作发生在叶子项。
+
+```rust
+MenuBar::new("app-menu", vec![
+    MenuBarItem::new("file", "文件").children(vec![
+        MenuItem::new("新建"),
+        MenuItem::separator(),
+        MenuItem::new("退出").danger(),
+    ]),
+    MenuBarItem::new("help", "帮助"),
+])
+.open(self.open_menu)
+.selected(self.selected_menu)
+.on_open_change(cx.listener(|this, open, _, cx| {
+    this.open_menu = *open;
+    cx.notify();
+}))
 ```
 
 ### NavMenu · 导航菜单
@@ -419,9 +568,9 @@ Steps::new(vec!["填写".into(), "审核".into(), "完成".into()])
 标签页切换。**受控组件**。
 
 - **创建**：`Tabs::new(items, active)`（items 为页签文本集合，active 为当前下标）。
-- **属性**：下划线指示器；`disabled_tabs(vec)` 禁用页签；`closable()` 可关闭；`card()` 卡片式；`centered()` 居中。
-- **回调**：`on_select(&usize)`（3 参，选中下标）；`on_close(&usize)`（3 参，关闭下标，需 `closable()`）。
-- **注意**：内容区由调用方根据 active 自行渲染（Tabs 只负责页签条）。
+- **属性**：下划线指示器；`disabled_tabs(vec)` 禁用页签；`closable()` 可关闭；`card()` 卡片式；`centered()` 居中；`scrollable()` 溢出时显示 ‹ › 滚动箭头，并自动把活动页签滚入视野。
+- **回调**：`on_select(&usize)`（3 参，选中下标）；`on_close(&usize)`（3 参，关闭下标，需 `closable()`）；`on_add`（2 参，显示「＋」按钮）。
+- **注意**：内容区由调用方根据 active 自行渲染（Tabs 只负责页签条）。`scrollable()` 模式下 `centered()` 不生效；未实现 antd 默认的「»」省略号下拉菜单。
 
 ```rust
 Tabs::new(["概览", "明细", "设置"], self.tab)
@@ -435,7 +584,7 @@ Tabs::new(["概览", "明细", "设置"], self.tab)
 包裹任意内容，右键弹出菜单。**包装器**，**需唯一 id**。
 
 - **创建**：`ContextMenu::new(id: impl Into<ElementId>, items)`，再 `.child(任意内容)`。
-- **行为**：右键在光标处弹出 `MenuItem` 菜单（视口内夹取，不超出窗口）。
+- **行为**：右键在光标处弹出 `MenuItem` 菜单（视口内夹取，不超出窗口）；同样支持 `MenuItem::submenu(...)` 多级子菜单。
 - **MenuItem 回调**：`on_click`（2 参）。
 
 ```rust
@@ -528,6 +677,28 @@ self.field.update(cx, |i, cx| i.set_text("…", window, cx));
 - **创建**：`cx.new(|cx| PasswordInput::new(cx))`。
 - **能力**：掩码显示 + **自绘眼睛图标**切换明文 / 掩码。
 - **读写**：同 TextInput（`text()` 拿到的是真实明文）。
+
+### OtpInput · 一次性验证码输入
+
+逐格显示的单焦点验证码 / PIN 输入。**Entity**。
+
+- **创建**：`cx.new(|cx| OtpInput::new(cx, 6))`；长度限制为 1–32。
+- **属性**：`label(text)`、`placeholder(text)`、`mask(bool)`、`separator(bool)`、`variant(InputVariant)`、`status(InputStatus)`、`size(InputSize)`、`disabled(bool)`。
+- **读写**：`value()` / `set_value(s, cx)` / `clear(cx)`；`length()`、`active_index()`、`is_complete()`、`focus(window, cx)`。
+- **键盘 / 剪贴板**：Left / Right / Home / End 移动当前格，Backspace / Delete 清除，Ctrl / Cmd+V 从当前格粘贴整串；仅接受 Unicode 字母与数字。
+- **回调**：`on_change(&str, &mut Window, &mut App)`；`on_complete(&str, &mut Window, &mut App)` 只在从未填满变为填满时触发。程序化 `set_value` 不触发回调。
+- **a11y**：`Role::TextInput`，暴露 value / placeholder / disabled / invalid，支持 SetValue。
+
+```rust
+code: cx.new(|cx| OtpInput::new(cx, 6)
+    .on_change(cx.listener(|this, value, _, cx| {
+        this.code = value.to_string();
+        cx.notify();
+    }))
+    .on_complete(cx.listener(|this, value, _, cx| {
+        this.verify(value, cx);
+    }))),
+```
 
 ### SearchInput · 搜索输入
 
@@ -887,17 +1058,29 @@ FormItem::new("姓名").required()
   - `pagination(page, page_size)` + `on_page_change()`：内置分页。
   - `row_detail(fn)` + `expanded_rows(vec)` + `on_expand()`：展开行。
   - `fixed_left()`：固定首列 + 横向滚动（**内置横向 Scrollbar**）。
+  - `fixed_right_columns(n)`：固定末尾 n 列，可与 `fixed_left()` 组合成左 / 中 / 右三栏。
+  - `resizable_columns(true)` + `on_column_resize()`：表头边缘拖拽调宽；手柄支持左右键每次 ±8px，最小 64px。
+  - `filterable()` + `filter(query)` + `on_filter_change()`：大小写不敏感子串筛选，筛选先于分页。
+  - `editable_columns(vec)` + `editing(Option<(row, col)>)` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()`：受控单元格编辑。
+  - `virtualized(px(视口高))` + `virtual_scroll_handle(handle)`：虚拟滚动（只挂载可见行，**行高统一 37px**，内置纵向 Scrollbar）。
   - 空数据自动显示空态。
-- **回调**（均 3 参，**一律用全局行下标**）：
+- **行相关回调**（均 3 参，**一律用全局行下标**）：
   - `on_row_click(&usize)`
   - `on_sort(&(usize, bool))`：列下标 + 是否升序。
   - `on_selected_rows(&Vec<usize>)`
   - `on_page_change(&usize)`：新页码（从 1 起）。
   - `on_expand(&usize)`
+- **DataGrid 回调**：
+  - `on_column_resize(&Vec<Pixels>)`：完整列宽快照，调用方回写 `column_widths()`。
+  - `on_filter_change(&str)`：筛选文本变化。
+  - `on_edit_start(&(usize, usize))` / `on_edit_end(&(usize, usize))`：进入 / 结束编辑。
+  - `on_cell_change(&((usize, usize), SharedString))`：编辑提交的新值。
 - **注意**：
   - 分页受控（页码从 1 起）；表头全选**只作用当前页**。
-  - `fixed_left()` 要求统一行高（37px），未指定列宽的列默认 120px。
-  - `fixed_left()` 与 `row_detail()` **互斥**——同时设置时展开行不生效。
+  - 筛选在分页前执行，排序 / 选中 / 展开 / 编辑等回调仍使用**全局行下标**。
+  - `fixed_left()` / `fixed_right_columns(n)` 要求统一行高（37px），未指定列宽的列默认 120px。
+  - `fixed_left()` / `fixed_right_columns(n)` 与 `row_detail()` **互斥**——同时设置时展开行不生效。
+  - `resizable_columns(true)` 必须接 `on_column_resize()` 回写列宽；编辑单元格可双击，或聚焦后按 Enter/Space 进入，Enter 或失焦提交。
 
 ```rust
 Table::new("users", vec!["姓名".into(), "电话".into(), "状态".into()], rows)
@@ -910,6 +1093,8 @@ Table::new("users", vec!["姓名".into(), "电话".into(), "状态".into()], row
     .on_page_change(cx.listener(|this, p, _, cx| { this.page = *p; cx.notify(); }))
     .on_sort(cx.listener(|this, (col, asc), _, cx| { this.sort_by(*col, *asc); cx.notify(); }))
 ```
+
+完整的 DataGrid 交互示例见 [`examples/data_grid.rs`](../examples/data_grid.rs)。
 
 ### Tree · 树形控件
 
@@ -940,12 +1125,59 @@ Tree::new("org", nodes)
     .on_check(cx.listener(|this, ids, _, cx| { this.checked = ids.clone(); cx.notify(); }))
 ```
 
+### TreeTable · 树形表格
+
+表格列布局 + 层级节点。**受控组件**，**需唯一 id**；节点 id 在同一棵树内唯一，回调全程使用节点 id 而非可见行下标。
+
+- **创建**：`TreeTableNode::new(id, cells)`（`cells` 为行内列值，可 `.child(node)` / `.children(nodes)` 嵌套，`Clone`）；`TreeTable::new(id, headers, nodes)`。
+- **属性**：
+  - `expanded(Vec<SharedString>)`、`selected(Option<SharedString>)` 受控。
+  - `checkable()` + `checked(Vec<SharedString>)`：父子级联勾选；祖先按子节点全选自动同步，未全选时显示半选态。
+  - `column_widths(Vec<Pixels>)`、`striped()`、`bordered()`、`show_header(bool)`。
+  - `virtualized(height)`：固定行高 + `uniform_list` 虚拟滚动；`virtual_scroll_handle(handle)` 可复用外部滚动句柄。
+- **回调**（均 3 参）：`on_toggle(&SharedString)`、`on_select(&SharedString)`、`on_check(&Vec<SharedString>)`。
+- **键盘**：表格聚焦后 ↑ / ↓ 移动，Home / End 跳首尾；← 收起当前节点或移动到父节点；→ 展开当前节点或移动到首个子节点；Enter 选中；启用勾选时 Space 切换当前节点勾选。
+- **纯函数 helper**：`tree_table_visible_ids()`、`tree_table_toggle_expanded()`、`tree_table_navigation_target()`、`tree_table_check_state()`、`tree_table_cascade_check()`，可直接用于宿主状态管理或矩阵测试。
+- **a11y**：容器 `Role::Table`；表头 `Role::ColumnHeader`；行与单元格使用表格语义；展开箭头 `Role::Button` + expanded，勾选框 `Role::CheckBox` + mixed。
+- **性能**：展开时按深度优先顺序展平；虚拟模式只实体化视口内可见行。行高固定，因此单元格文本单行省略。
+- **注意**：首版不包含固定左右列、列拖拽、单元格编辑与排序；这些能力归入 P2 DataGrid 扩展。
+
+```rust
+TreeTable::new("files-table", ["名称", "大小", "状态"], self.nodes.clone())
+    .expanded(self.expanded.clone())
+    .selected(self.selected.clone())
+    .checkable().checked(self.checked.clone())
+    .column_widths(vec![px(320.), px(120.), px(180.)])
+    .virtualized(px(480.))
+    .on_toggle(cx.listener(|this, id, _, cx| {
+        this.expanded = tree_table_toggle_expanded(&this.expanded, id);
+        cx.notify();
+    }))
+    .on_select(cx.listener(|this, id, _, cx| {
+        this.selected = Some(id.clone());
+        cx.notify();
+    }))
+    .on_check(cx.listener(|this, ids, _, cx| {
+        this.checked = ids.clone();
+        cx.notify();
+    }))
+```
+
 ### List · 列表
 
 垂直列表。**受控组件**（无回调）。
 
 - **创建**：`ListItem::new(title)`（可设描述 / 头像 / `extra()` 右侧元素）；`List::new(items)`。
+- **虚拟滚动**：`List::virtualized(px(视口高), px(行高), count, |ix| ListItem)` + `virtual_scroll_handle(handle)`，只挂载可见行；行由工厂按需构造，header / footer 固定在视口外。
 - **属性**：`header(el)` / `footer(el)`。
+
+```rust
+List::virtualized(px(520.), px(56.), 10_000, |ix|
+    ListItem::new(format!("会话 {ix:05}")).description("host-000.internal"))
+    .header(Text::new("会话列表").strong())
+```
+
+> 虚拟滚动要求**行高统一**：多行行内容（描述、头像、分隔线）的内边距须由调用方在行高内留足。
 
 ```rust
 List::new(vec![
@@ -1051,7 +1283,19 @@ Tag::new("标签").color(TagColor::Blue)
 状态标记。**受控组件**（无回调）。
 
 - **创建**：`Badge::new(label)`。
-- **属性**：`info()` / `success()` / `warning()` / `danger()`；`color(c)` 自定义色。
+- **胶囊模式**：`info()` / `success()` / `warning()` / `danger()`；`color(c)` 自定义色。
+- **状态点模式**：`status(BadgeStatus::{Default, Processing, Success, Error, Warning})`，显示 token 配色的圆点 + 文本；`text()` 可更新文本。
+- **提示与无障碍**：`title()` 同时提供悬停提示和无障碍描述；`aria_label()` 覆盖无障碍名称。
+- **唯一 id**：同页多个同文本徽章应传入不同 `id()`。
+
+```rust
+Badge::new("运行中").success()
+Badge::new("进行中")
+    .id("job-processing")
+    .status(BadgeStatus::Processing)
+    .title("任务正在处理")
+    .aria_label("任务状态：进行中")
+```
 
 ### CountBadge · 数字角标
 
@@ -1059,18 +1303,39 @@ Tag::new("标签").color(TagColor::Blue)
 
 - **创建**：`CountBadge::new(count: u32)`，再 `.child(子元素)`。
 - **属性**：`max(n)` 溢出显示 99+；`dot()` 红点模式；`show_zero()`；`color(c)` 自定义底色；`offset(x, y)` 位置偏移。
+- **尺寸**：`size(BadgeSize::Small)` 使用 14px 高的小角标；默认保持 20px。
+- **提示与无障碍**：`title()` 悬停提示；`aria_label()` 覆盖默认「N 条消息」名称。
 
 ```rust
 CountBadge::new(5).max(99).child(Avatar::new("张三"))
+CountBadge::new(8)
+    .size(BadgeSize::Small)
+    .title("小尺寸计数")
+    .aria_label("八条未读消息")
+    .child(Avatar::new("李四"))
 ```
 
 ### Avatar · 头像
 
-名字首字符头像。**受控组件**（无回调）。
+名字首字符或图片头像。**受控组件**；图片失败态由 `image_error()` 外部控制。
 
 - **创建**：`Avatar::new(name)`。
-- **能力**：圆形背景 + 名字首字符，背景色由名字哈希确定。
-- **属性**：`size(px)`；`square()` 圆角方形。
+- **能力**：圆形背景 + 名字首字符，底色固定为 `colorTextPlaceholder`；设置 `image(source)` 后按 cover 裁剪，加载中或失败时回退首字符。
+- **属性**：`size(px)` 自定义边长并同步缩放字号/行高；`square()` 圆角方形；`image_error(bool)` 强制失败回退。
+- **回调**：`on_image_error(&ImageCacheError, &mut Window, &mut App)`，适合驱动受控失败态。
+- **唯一 id**：同一窗口内多个同名头像应传入不同 `id()`，避免元素与无障碍 ID 冲突。
+
+```rust
+Avatar::new("张三")
+    .id("user-42-avatar")
+    .size(px(48.))
+    .image(source)
+    .image_error(self.avatar_failed)
+    .on_image_error(cx.listener(|this, _error, _, cx| {
+        this.avatar_failed = true;
+        cx.notify();
+    }))
+```
 
 ### ImageView · 图片
 
@@ -1337,21 +1602,83 @@ if self.modal_open {
 
 ### ToastStack · 轻提示堆栈
 
-右上角浮层轻提示。**受控组件**。
+顶部居中浮层轻提示。**受控组件**，条目集合与生命周期由调用方管理。
 
 - **创建**：`ToastItem::new(message)`（四种类型 info/success/warning/error）；`ToastStack::new(items)`。
-- **属性**：条目受控（`Vec<ToastItem>`）。
-- **回调**：`on_close(&usize)`（3 参，回传被移除条目下标）。
-- **注意**：渲染在滚动容器之外；自动消失 / 手动移除由调用方管理条目集合。
+- **稳定身份**：`ToastItem::key(key)`；元素 id 为 `toast-{key}`，关闭钮 id 为 `toast-close-{key}`。未提供 key 的受控条目退回 `index-{index}`，因此列表项应始终提供业务 key。
+- **属性**：条目受控（`Vec<ToastItem>`）；`duration()` / `pause_on_hover()` 仅由 `ToastHost` 消费，`ToastStack` 不运行计时器。
+- **回调**：新代码使用 `on_dismiss(&ToastDismissed, &mut Window, &mut App)`（3 参），事件含 `key: Option<SharedString>`、当前 `index` 与 `by_timer`；旧 `on_close(&usize)` 保留兼容。
+- **注意**：渲染在滚动容器之外；自动消失 / 手动移除由调用方管理条目集合。需要 antd 式自动到期时使用 `ToastHost`。
+
+### ToastHost · 自管轻提示
+
+顶部居中浮层轻提示。**Entity 组件**，内部管理条目、绝对到期时间、悬停暂停、数量上限与单一 ticker。
+
+- **创建**：`cx.new(|cx| ToastHost::new(cx).config(ToastConfig { max_count: 6, pause_on_hover: true }))`；render 中挂载 `host.clone()`。
+- **默认 TTL**：`default_toast_duration(variant)`；Info / Success 3s、Warning 4.5s、Danger 6s，与 antd Message 对齐。
+- **条目 API**：`show(item, cx)` 使用条目或类型默认时长；`show_with(item, duration, cx)` 覆盖时长；`Duration::ZERO` 表示常驻；`ToastItem::pause_on_hover(bool)` 可覆盖全局设置。
+- **稳定 key**：显式 `key` 优先；未提供时 Host 分配 `toast-{n}`。同 key 再次 `show` 会原地更新并重启计时器。
+- **数量与顺序**：最新条目插到顶部；超过 `max_count` 时从尾部丢最旧，保留剩余顺序。
+- **回调**：`on_dismiss(&ToastDismissed, &mut App)`（2 参，无 Window）；手动关闭与定时到期均回传稳定 key、当前下标和 `by_timer`。
+- **控制 API**：`dismiss(&key, cx) -> bool`、`clear(cx)`、`len()`、`is_empty()`。
+- **性能**：每个 Host 最多一个 50ms ticker；仅存在未暂停的有效计时器时运行，全部到期 / 清除后退出，不为每条提示创建异步任务。
+- **注意**：放在根视图最后一个子元素、滚动容器之外。`ToastHost` 是 `Entity`，不要放进 `ToastStack` 的受控条目列表。
 
 ### NotificationStack · 通知堆栈
 
 右上角浮层通知。**受控组件**。
 
 - **创建**：`NotificationItem::new(title)`（可设描述 / 类型 / `action()` 按钮）；`NotificationStack::new(items)`。
-- **属性**：条目受控。
-- **回调**：`on_close(&usize)`（3 参）。
-- **注意**：渲染在滚动容器之外。
+- **稳定身份**：`NotificationItem::key(key)`；元素 id 为 `notification-{key}`，关闭钮 id 为 `notif-close-{key}`，操作按钮 id 为 `notification-action-{key}`。未提供 key 时退回 `index-{index}`。
+- **属性**：条目受控；`duration()` / `pause_on_hover()` 仅由 `NotificationHost` 消费。
+- **回调**：新代码使用 `on_dismiss(&NotificationDismissed, &mut Window, &mut App)`（3 参），事件含 `key`、当前 `index` 与 `by_timer`；旧 `on_close(&usize)` 保留兼容。
+- **注意**：渲染在滚动容器之外；自动消失 / 手动移除由调用方管理条目集合。
+
+### NotificationHost · 自管通知
+
+右上角浮层通知。**Entity 组件**，内部管理条目、到期、悬停暂停、数量上限与单一 ticker。
+
+- **创建**：`cx.new(|cx| NotificationHost::new(cx).config(NotificationConfig { max_count: 4, pause_on_hover: true }))`；render 中挂载 `host.clone()`。
+- **默认 TTL**：`default_notification_duration()` = 4.5s，与 antd Notification 对齐；`Duration::ZERO` 表示常驻。
+- **条目 API**：`show(item, cx)` / `show_with(item, duration, cx)`；`NotificationItem::pause_on_hover(bool)` 可覆盖全局设置。
+- **稳定 key**：显式 `key` 优先；未提供时 Host 分配 `notification-{n}`。同 key 再次 `show` 会原地更新并重启计时器。
+- **数量与顺序**：最新条目插到顶部；超过 `max_count` 时从尾部丢最旧。
+- **回调**：`on_dismiss(&NotificationDismissed, &mut App)`（2 参，无 Window），区分手动关闭与定时到期。
+- **控制 API**：`dismiss(&key, cx) -> bool`、`clear(cx)`、`len()`、`is_empty()`。
+- **性能与位置**：每个 Host 最多一个 50ms ticker，无有效计时器时退出；放在根视图最后一个子元素、滚动容器之外。
+
+### NotificationCenter · 通知中心
+
+右侧覆盖式通知历史面板。**受控组件**，条目由父视图持有。
+
+- **创建**：`NotificationCenter::new(id, items)`；`id` 必须是同窗口内稳定且唯一的 `ElementId`。
+- **属性**：`open(bool)`、`selected(Option<usize>)`、`title(text)`、`empty_text(text)`；空集合时显示空状态。
+- **条目能力**：复用 `NotificationItem`，新增 `.read(bool)`、`.set_read(bool)`、`.timestamp(text)`；读取用 `is_read()`、`timestamp_text()`、`description_text()`、`title()`、`variant()`。
+- **回调**：`on_select(&usize, &mut Window, &mut App)`、`on_read(&usize, &mut Window, &mut App)`、`on_remove(&usize, &mut Window, &mut App)`、`on_mark_all_read(&mut Window, &mut App)`、`on_dismiss(&mut Window, &mut App)`。后两者无事件参数，不能直接使用 `cx.listener`，应在闭包里用 `cx.entity()` 句柄更新父视图。
+- **交互**：点击条目触发选择，未读条目同时触发 `on_read`；✕ 删除；表头可全部已读或关闭；↑ / ↓ 循环移动，Home / End 跳到首尾，Esc 关闭。
+- **性能**：固定行高 + `uniform_list` 虚拟化，长历史只实体化视口内行；行内标题与描述单行省略。
+- **a11y**：面板为 `Role::Dialog`，行为 `Role::ListItem`（暴露 selected），删除与表头操作为 `Role::Button`。
+- **注意**：放在根视图最后一个子元素、滚动容器之外；条目集合变化后由调用方重绘。
+
+```rust
+NotificationCenter::new("inbox-center", self.items.clone())
+    .open(self.center_open)
+    .selected(self.selected)
+    .on_select(cx.listener(|this, index, _, cx| {
+        this.selected = Some(*index);
+        cx.notify();
+    }))
+    .on_read(cx.listener(|this, index, _, cx| {
+        if let Some(item) = this.items.get_mut(*index) {
+            item.set_read(true);
+            cx.notify();
+        }
+    }))
+    .on_remove(cx.listener(|this, index, _, cx| {
+        this.items.remove(*index);
+        cx.notify();
+    }))
+```
 
 ### Popconfirm · 气泡确认框
 
@@ -1519,7 +1846,7 @@ meter.update(cx, |m, cx| m.stop(cx));
 
 ## 十、高级与宿主模块
 
-这 8 个模块均已通过 `src/lib.rs` 的 `pub mod` / `pub use` 公开；单独收录，**不计入上面的 98 个已文档化控件 / 101 个条目，也不合并写成 106**。
+这 8 个模块均已通过 `src/lib.rs` 的 `pub mod` / `pub use` 公开；单独收录，**不计入上面的 103 个已文档化控件 / 106 个条目，也不合并写成 107**。
 
 ### HotkeyInput · 快捷键录入
 
@@ -1547,6 +1874,56 @@ let binding = hotkey.read(cx).binding().to_owned(); // "ctrl-shift-k"
 ```
 
 - **注意事项**：`value()` 与 `binding()` 格式不同，注册快捷键应使用后者；`Esc` 取消并保留原值，Backspace / Delete 清空并回调；失焦结束录入。`require_modifier(true)` 要求 Ctrl / Alt / 平台键之一，裸键与仅 Shift 不计。无需 `bind_keys`，同窗多实例应给稳定唯一 id。
+
+### DiffView · 行级代码差异
+
+- **定位**：比较两段文本，以统一或左右分栏视图展示新增、删除与未变行；适合版本说明、补丁预览与配置核对。
+- **状态模型**：无状态 `RenderOnce`；旧文本、新文本与显示模式由宿主每帧传入。
+- **创建**：`DiffView::new(old: impl Into<SharedString>, new: impl Into<SharedString>) -> Self`。
+- **属性**：`id(...)` 设置稳定唯一标识；`title(...)` 自定义标题；`mode(DiffMode::{Split, Unified})` 切换分栏 / 统一视图；`line_numbers(bool)` 控制行号，默认显示。
+- **纯函数**：`diff_lines(&str, &str) -> Vec<DiffLine>` 返回最短行级差异，`DiffLine` 包含 `DiffKind::{Equal, Added, Removed}`、从 1 开始的 `old_line` / `new_line` 和文本；`diff_stats(&[DiffLine]) -> DiffStats` 统计增删行数。
+- **算法**：先剥离公共前后缀，再执行 Myers 最短编辑路径；两段文本完全不共享行时直接构造替换结果，避免无意义的平方级轨迹开销。`str::lines()` 按行比较，不把末尾换行符本身作为一个差异行。
+- **最小示例**：
+
+```rust
+use gpui_widgets::{DiffMode, DiffView, diff_lines, diff_stats};
+
+let old = "let value = 1;\nprintln!(\"{value}\");";
+let new = "let value = 2;\nprintln!(\"{value}\");";
+let lines = diff_lines(old, new);
+let stats = diff_stats(&lines); // added: 1, removed: 1
+
+DiffView::new(old, new)
+    .id("value-diff")
+    .title("main.rs")
+    .mode(DiffMode::Split)
+```
+
+- **注意事项**：长行在单元格内水平裁切，不换行；颜色跟随主题 success / danger 令牌。当前视图渲染全部差异行，超大文件建议由宿主先分片或分页。同窗多个实例必须使用唯一 id。
+
+### MarkdownEditor · Markdown 源码编辑与预览
+
+- **定位**：在 `TextArea` 源码编辑能力之上复用 `Markdown` 渲染器，提供实时预览；不是所见即所得编辑器。
+- **状态模型**：受控 `RenderOnce`。宿主持有源码字符串；内部用按 id 隔离的 keyed state 保存 `Entity<TextArea>`。用户编辑触发 `on_change`，宿主更新后回传；外部文本变化以静默写入同步，不反向触发 `on_change`。
+- **创建**：`MarkdownEditor::new(text: impl Into<SharedString>) -> Self`。
+- **属性**：`id(...)`；`title(...)`；`placeholder(...)`；`mode(MarkdownEditorMode::{Split, Editor, Preview})`；`height(Pixels)` 设置源码与预览可视高度。
+- **回调**：`on_change(Fn(&str, &mut Window, &mut App))` 回传完整源码。
+- **前置条件**：应用启动时调用 `text_area::bind_keys(cx)`，以启用 Enter、Tab / Shift+Tab、方向键、选择、剪切复制粘贴与撤销重做等编辑快捷键。
+- **最小示例**：
+
+```rust
+use gpui_widgets::{MarkdownEditor, MarkdownEditorMode};
+
+MarkdownEditor::new(self.markdown.clone())
+    .id("article-editor")
+    .mode(MarkdownEditorMode::Split)
+    .on_change(cx.listener(|this, text: &str, _, cx| {
+        this.markdown = text.to_string();
+        cx.notify();
+    }))
+```
+
+- **注意事项**：初始光标位于源码开头；源码区启用行号与等宽字体。预览语法范围与 `Markdown` 完全一致，不支持图片、原始 HTML、脚注等完整 GFM 特性。同窗多个编辑器必须使用唯一 id。
 
 ### Markdown · Markdown 渲染
 
@@ -1752,13 +2129,20 @@ TitleBar::new("My App")
 | Anchor | `on_click` | `&SharedString` | 3 |
 | Breadcrumb | `on_click` | `&usize` | 3 |
 | MenuItem（DropdownMenu/ContextMenu） | `on_click` | — | 2 |
+| MenuBar | `on_open_change` | `&Option<usize>` | 3 |
+| MenuBar | `on_select` | `usize` + `&SharedString` | 特 |
+| MenuBarItem | `on_click` | — | 2 |
+| Toolbar | `on_action` | `&SharedString` | 3 |
+| ToolbarItem | `on_click` | — | 2 |
 | NavMenu | `on_select` / `on_toggle` | `&SharedString` | 3 |
 | Pagination | `on_change` | `&usize` | 3 |
 | Tabs | `on_select` / `on_close` | `&usize` | 3 |
+| Tabs | `on_add` | — | 2 |
 | FloatButton | `on_click` | — | 2 |
 | CommandPalette | `on_select` | `&SharedString` | 3 |
 | Splitter | `on_change` | `&f32` | 3 |
 | SearchInput | `on_change` / `on_search` | `&str` | 3 |
+| OtpInput | `on_change` / `on_complete` | `&str` | 3 |
 | NumberInput | `on_change` | `Option<f64>`（**按值**） | 3 |
 | Stepper | `on_change` | `&f32` | 3 |
 | TagInput | `on_change` | `&Vec<SharedString>` | 3 |
@@ -1790,6 +2174,8 @@ TitleBar::new("My App")
 | Tree | `on_toggle` / `on_select` | `&SharedString` | 3 |
 | Tree | `on_check` | `&Vec<SharedString>` | 3 |
 | Tree | `on_drop_node` | `&TreeDrop` | 3 |
+| TreeTable | `on_toggle` / `on_select` | `&SharedString` | 3 |
+| TreeTable | `on_check` | `&Vec<SharedString>` | 3 |
 | Countdown | `on_finish` | —（无 Window） | 1 |
 | Calendar | `on_month_change` / `on_select` / `on_mode_change` | `&(i32,u32)` / `&Date` / `&CalendarMode` | 3 |
 | Tag | `on_close` | `&ClickEvent` | 3 |
@@ -1801,7 +2187,11 @@ TitleBar::new("My App")
 | Tour | `on_close` | — | 2 |
 | Alert | `on_close` | — | 2 |
 | Modal / Drawer | `on_close` | — | 2 |
-| ToastStack / NotificationStack | `on_close` | `&usize` | 3 |
+| ToastStack / NotificationStack | `on_dismiss` | `&ToastDismissed` / `&NotificationDismissed` | 3 |
+| ToastStack / NotificationStack | `on_close`（兼容旧 API） | `&usize` | 3 |
+| ToastHost / NotificationHost | `on_dismiss` | `&ToastDismissed` / `&NotificationDismissed`（无 Window） | 2 |
+| NotificationCenter | `on_select` / `on_read` / `on_remove` | `&usize` | 3 |
+| NotificationCenter | `on_mark_all_read` / `on_dismiss` | — | 2 |
 | Popconfirm | `on_open_change` | `&bool` | 3 |
 | Popconfirm | `on_confirm` / `on_cancel` | — | 2 |
 | HotkeyInput | `on_change` | `&str` | 3 |
@@ -1834,6 +2224,7 @@ TitleBar::new("My App")
 | TextInput | `TextInput::new(cx)` | `text()` / `set_text(s, window, cx)` |
 | TextArea | `TextArea::new(cx)` | 同 TextInput |
 | PasswordInput | `PasswordInput::new(cx)` | 同 TextInput |
+| OtpInput | `OtpInput::new(cx, length)` | `value()` / `set_value(s, cx)` / `clear(cx)` / `is_complete()` |
 | SearchInput | `SearchInput::new(cx)` | 同 TextInput |
 | Autocomplete | `Autocomplete::new(cx, items)` | 同 TextInput |
 | Mentions | `Mentions::new(cx)` | 同 TextInput |
@@ -1842,6 +2233,8 @@ TitleBar::new("My App")
 | CommandPalette | `CommandPalette::new(cx, items)` | `open(window, cx)` / `close(cx)` |
 | VideoPlayer（仅 Windows） | `VideoPlayer::new(cx, path)` | `play/pause/toggle/seek`、`position()/duration()/is_playing()` |
 | Countdown | `Countdown::new(unix, cx)` / `after(Duration, cx)` | `remaining()` / `finished()` |
+| ToastHost | `ToastHost::new(cx)` | `show` / `show_with` / `dismiss` / `clear` / `len` / `is_empty` |
+| NotificationHost | `NotificationHost::new(cx)` | `show` / `show_with` / `dismiss` / `clear` / `len` / `is_empty` |
 | Sender | `Sender::new(cx).on_send(…)` | 内部 TextArea；`on_send` 回传文本 |
 | FpsMeter | `FpsMeter::new(cx)` | `fps()` / `frame_ms()` / `start/stop` |
 | HotkeyInput | `HotkeyInput::new(cx)` | `value()` / `binding()` / `set_binding` / `clear` / 录入控制 |
@@ -1855,7 +2248,7 @@ TitleBar::new("My App")
 
 同一窗口内多实例 id 必须唯一（hover / 拖拽 / keyed-state 按 `ElementId` 判定）：
 
-`Slider` `Splitter` `Scrollbar` `Select` `MultiSelect` `Cascader` `TreeSelect` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `UploadList` `Table` `Tree` `Calendar` `Carousel` `Accordion` `Popover` `Popconfirm` `ContextMenu` `DropdownMenu` `NavMenu` `Pagination` `FloatButton` `Rating` `Stepper` `HotkeyInput` `TransferManager` `Terminal` `CommandBar` `DropZone` `TitleBar`
+`Slider` `Splitter` `Scrollbar` `Affix` `StatusBar` `Toolbar` `Select` `MultiSelect` `Cascader` `TreeSelect` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `UploadList` `Table` `TreeTable` `Tree` `Calendar` `Carousel` `Accordion` `Popover` `Popconfirm` `ContextMenu` `DropdownMenu` `MenuBar` `NavMenu` `Pagination` `FloatButton` `Rating` `Stepper` `OtpInput` `NotificationCenter` `HotkeyInput` `TransferManager` `Terminal` `CommandBar` `DropZone` `TitleBar`
 
 > `Upload::new()` 默认 id 为 `"upload-area"`，多个 Upload 实例须用 `.id(…)` 区分，否则 hover 串扰。
 
@@ -1874,10 +2267,13 @@ A：它们是 **2 参族**（无事件参），改用 `cx.entity()` 句柄 + `en
 A：id 重复了。同窗口每个实例用唯一 id（列表里用下标 / 业务 key 拼）。
 
 **Q：Modal / Drawer 被滚动容器裁切 / 位置错乱？**
-A：必须渲染在**滚动容器之外**（根视图最后一个子元素）。ToastStack / NotificationStack / Tour / CommandPalette 同理。
+A：必须渲染在**滚动容器之外**（根视图最后一个子元素）。ToastStack / ToastHost / NotificationStack / NotificationHost / NotificationCenter / Tour / CommandPalette 同理。
 
 **Q：Scrollbar 滑块不动 / 滚轮不联动？**
 A：`ScrollHandle` 没跨帧持久，或滚动容器没接 `.track_scroll(&handle)`。二者必须共享同一 handle（放视图字段或 `window.use_keyed_state`）。
+
+**Q：Affix 没有吸顶 / 吸底，或位置跳变？**
+A：确认 `Affix` 与滚动容器使用同一个持久 `ScrollHandle`，且滚动容器带 `.id(...)`、`.overflow_y_scroll()` 和 `.track_scroll(&handle)`。Affix 的占位元素必须留在原文档流中，不要在外面再套会裁切或改变定位的容器。
 
 **Q：`TextInput::new(cx)` 在 render 里编译失败？**
 A：它的 `cx` 是 `Context<TextInput>`，只能在 `cx.new(|cx| …)` 闭包里调用，不能在父视图 render / 分区方法里直接 new。
@@ -1892,7 +2288,7 @@ A：if/else 分支类型须一致。`Pixels / Pixels = f32`，所以两分支都
 A：容量上限 134 字节（UTF-8 中文约 44 字），超长被截断。适合短文本 / URL。
 
 **Q：Table 设了 `fixed_left()` 后展开行不生效？**
-A：`fixed_left()` 与 `row_detail()` 互斥，同时设置时展开行被禁用。
+A：`fixed_left()` / `fixed_right_columns(n)` 与 `row_detail()` 互斥，同时设置时展开行被禁用。
 
 **Q：Calendar 点月导航 / 切视图没反应？**
 A：Calendar 全受控，`on_month_change` / `on_select` / `on_mode_change` 三个回调都要接并回写状态。

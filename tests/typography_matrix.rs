@@ -8,7 +8,7 @@ use gpui_widgets::theme::{
     Appearance, Color, Seed, Tokens, derive,
     metric::{self, TypographyMetric},
 };
-use gpui_widgets::typography::{TypographyType, typography_color};
+use gpui_widgets::typography::{TypographyType, truncate_text, typography_color};
 
 const BASELINE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/harness/antd_baseline/");
 
@@ -199,4 +199,20 @@ fn typography_metrics_follow_tokens() {
     assert_eq!(m.title_margin_bottom, 20.0);
     assert_eq!(m.body_size, 14.0);
     assert_eq!(m.body_line_height, 22.0);
+}
+
+#[test]
+fn truncate_text_preserves_unicode_graphemes() {
+    assert_eq!(truncate_text("abcdef", 3, "…"), "abc…");
+    assert_eq!(truncate_text("你好世界", 2, "…"), "你好…");
+    assert_eq!(truncate_text("e\u{301}clair", 1, "…"), "e\u{301}…");
+    assert_eq!(truncate_text("👩‍💻abc", 1, "…"), "👩‍💻…");
+}
+
+#[test]
+fn truncate_text_handles_boundaries() {
+    assert_eq!(truncate_text("abc", 3, "…"), "abc");
+    assert_eq!(truncate_text("abc", 5, "…"), "abc");
+    assert_eq!(truncate_text("abc", 0, "…"), "…");
+    assert_eq!(truncate_text("", 0, "…"), "");
 }

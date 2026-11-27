@@ -4,9 +4,12 @@
 //! 样式生成，关键值已用 `harness/_badge_probe.html` 的 computed style 核对。
 
 use gpui::{Hsla, px};
-use gpui_widgets::badge::badge_state;
+use gpui_widgets::badge::{
+    badge_state, badge_state_sized, badge_status_color, badge_variant_colors,
+};
 use gpui_widgets::theme::metric::{BadgeMetric, badge_ring_shadow};
 use gpui_widgets::theme::{Appearance, Color, Seed, Tokens, derive};
+use gpui_widgets::{BadgeSize, BadgeStatus, BadgeVariant};
 
 const BASELINE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/harness/antd_baseline/");
 
@@ -170,4 +173,89 @@ fn badge_metrics_follow_tokens() {
     let m = BadgeMetric::resolve(&tokens);
     assert_eq!(m.count_width(1), 20.0);
     assert_eq!(m.count_width(3), 37.0);
+}
+
+#[test]
+fn badge_status_colors_follow_tokens() {
+    for tokens in [
+        tokens_for(None, Appearance::Light),
+        tokens_for(None, Appearance::Dark),
+        tokens_for(Some(0x8b5cf6), Appearance::Light),
+    ] {
+        assert_eq!(
+            badge_status_color(&tokens, BadgeStatus::Default, None),
+            tokens.color_text_placeholder
+        );
+        assert_eq!(
+            badge_status_color(&tokens, BadgeStatus::Processing, None),
+            tokens.color_info
+        );
+        assert_eq!(
+            badge_status_color(&tokens, BadgeStatus::Success, None),
+            tokens.color_success
+        );
+        assert_eq!(
+            badge_status_color(&tokens, BadgeStatus::Error, None),
+            tokens.color_error
+        );
+        assert_eq!(
+            badge_status_color(&tokens, BadgeStatus::Warning, None),
+            tokens.color_warning
+        );
+    }
+}
+
+#[test]
+fn badge_variant_colors_follow_tokens() {
+    let tokens = tokens_for(None, Appearance::Light);
+    assert_eq!(
+        badge_variant_colors(&tokens, BadgeVariant::Neutral, None),
+        (tokens.control_item_bg_hover, tokens.color_text_secondary)
+    );
+    assert_eq!(
+        badge_variant_colors(&tokens, BadgeVariant::Info, None),
+        (tokens.color_primary_bg, tokens.color_primary)
+    );
+    assert_eq!(
+        badge_variant_colors(&tokens, BadgeVariant::Success, None),
+        (tokens.color_success_bg, tokens.color_success)
+    );
+    assert_eq!(
+        badge_variant_colors(&tokens, BadgeVariant::Warning, None),
+        (tokens.color_warning_bg, tokens.color_warning)
+    );
+    assert_eq!(
+        badge_variant_colors(&tokens, BadgeVariant::Danger, None),
+        (tokens.color_error_bg, tokens.color_error)
+    );
+}
+
+#[test]
+fn badge_custom_color_overrides_variant_and_status() {
+    let tokens = tokens_for(None, Appearance::Light);
+    let custom = Color::from_hex(0x722ed1).hsla();
+    let (bg, fg) = badge_variant_colors(&tokens, BadgeVariant::Danger, Some(custom));
+    assert_eq!(fg, custom);
+    assert_eq!(bg.a, 0.12);
+    assert_eq!(
+        badge_status_color(&tokens, BadgeStatus::Success, Some(custom)),
+        custom
+    );
+}
+
+#[test]
+fn badge_small_count_metrics_are_compact() {
+    let tokens = tokens_for(None, Appearance::Light);
+    let normal = badge_state_sized(&tokens, false, None, BadgeSize::Default);
+    let small = badge_state_sized(&tokens, false, None, BadgeSize::Small);
+    assert_eq!(normal.height, 20.0);
+    assert_eq!(small.height, 14.0);
+    assert_eq!(small.min_width, 14.0);
+    assert_eq!(small.radius, 7.0);
+    assert_eq!(small.line_height, 14.0);
+    assert_eq!(small.font_size, tokens.font_size_sm);
+    assert_eq!(small.dot_size, normal.dot_size);
+    assert_eq!(small.bg, tokens.color_error);
+    assert_eq!(small.text, tokens.color_text_light_solid);
+    assert_eq!(small.ring.color, tokens.color_bg_container);
 }

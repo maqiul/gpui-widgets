@@ -2,7 +2,7 @@
 
 # gpui-widgets
 
-基于 [GPUI](https://gpui.rs)（Zed 的 GPU 加速 UI 框架）的通用控件库，Rust 编写，包含 **98 个已文档化控件 / 101 个条目，另有 8 个公开高级/宿主模块**（含参照 Ant Design 组件总览补齐的导航 / 展示 / 录入 / 反馈类，及后续属性对齐、数据可视化、AI 对话与性能监视扩充），可直接被其他项目依赖使用。
+基于 [GPUI](https://gpui.rs)（Zed 的 GPU 加速 UI 框架）的通用控件库，Rust 编写，包含 **107 个已文档化控件 / 110 个条目，另有 8 个公开高级/宿主模块**（含参照 Ant Design 组件总览补齐的导航 / 展示 / 录入 / 反馈类，及后续属性对齐、数据可视化、AI 对话与性能监视扩充），可直接被其他项目依赖使用。
 
 依赖 crates.io 公开发布的 `gpui-pre = "=0.3.14"`（Zed GPUI 快照的第三方重发，crate 内库名仍为 `gpui`），**无需本地 zed 源码**。
 
@@ -18,12 +18,12 @@
 
 | 类别 | 包含控件 |
 |---|---|
-| 通用 | `Button` `Link` `Title/Paragraph/Text` `Kbd` |
+| 通用 | `Button` `Link` `Title/Paragraph/Text` `Kbd` `Toolbar` |
 | 布局 | `Row/Col` `Header/Sider/Content/Footer` `Space` `Splitter` `Scrollbar` |
-| 导航 | `Anchor` `Breadcrumb` `DropdownMenu` `NavMenu` `Pagination` `Steps` `Tabs` `ContextMenu` `FloatButton` `CommandPalette` |
-| 数据录入 | `TextInput` `TextArea` `PasswordInput` `SearchInput` `NumberInput` `Stepper` `TagInput` `Autocomplete` `Mentions` `Select` `MultiSelect` `Cascader` `TreeSelect` `Checkbox` `Radio` `Switch` `Slider` `Rating` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `Upload` `UploadList` `FilePicker` `Form` `FormItem` |
-| 数据展示 | `Table` `Tree` `List` `Card` `Descriptions` `Statistic` `Countdown` `Calendar` `Timeline` `Tag` `Badge` `CountBadge` `Avatar` `ImageView` `VideoPlayer` `Carousel` `BarChart` `LineChart` `Sparkline` `PieChart` `GaugeChart` `ScatterChart` `Heatmap` `RadarChart` `FunnelChart` `QRCode` `CodeBlock` `Empty` `Segmented` `Accordion` `Tooltip` `Popover` `Tour` |
-| 反馈 | `Alert` `Modal` `Drawer` `ToastStack` `NotificationStack` `Popconfirm` `ProgressBar` `RingProgress` `Result` `Skeleton` `Spinner` `Watermark` |
+| 导航 | `Anchor` `Breadcrumb` `DropdownMenu` `MenuBar` `NavMenu` `Pagination` `Steps` `Tabs` `ContextMenu` `FloatButton` `CommandPalette` |
+| 数据录入 | `TextInput` `TextArea` `PasswordInput` `OtpInput` `SearchInput` `NumberInput` `Stepper` `TagInput` `Autocomplete` `Mentions` `Select` `MultiSelect` `Cascader` `TreeSelect` `Checkbox` `Radio` `Switch` `Slider` `Rating` `DatePicker` `DateRangePicker` `TimePicker` `ColorPicker` `Transfer` `Upload` `UploadList` `FilePicker` `Form` `FormItem` |
+| 数据展示 | `Table` `TreeTable` `Tree` `List` `Card` `Descriptions` `Statistic` `Countdown` `Calendar` `Timeline` `Tag` `Badge` `CountBadge` `Avatar` `ImageView` `VideoPlayer` `Carousel` `BarChart` `LineChart` `Sparkline` `PieChart` `GaugeChart` `ScatterChart` `Heatmap` `RadarChart` `FunnelChart` `QRCode` `CodeBlock` `DiffView` `MarkdownEditor` `Empty` `Segmented` `Accordion` `Tooltip` `Popover` `Tour` |
+| 反馈 | `Alert` `Modal` `Drawer` `ToastStack` `ToastHost` `NotificationStack` `NotificationHost` `NotificationCenter` `Popconfirm` `ProgressBar` `RingProgress` `Result` `Skeleton` `Spinner` `Watermark` |
 | AI 对话 | `Welcome` `Prompts` `Bubble` `Sender` `Conversations` `ThoughtChain` |
 | 辅助与主题 | `misc` `theme` `FpsMeter` |
 
@@ -33,8 +33,9 @@
 |---|---|
 | `Button` | 按钮：`primary()` / `secondary()` / `ghost()` / `danger()` 变体，`small()` / `large()` 尺寸，`loading()` 加载态（阻点击），`block()` 占满整行，`icon()` 前置图标字符，`round()` 胶囊 / `circle()` 圆形，`disabled()` |
 | `Link` | 链接：悬停下划线，`href()` 点击打开浏览器 / `on_click()` 自定义 / `disabled()` |
-| `Title` / `Paragraph` / `Text` | 排版三件套：1~5 级标题 / 段落 / 行内文本（`strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()`） |
+| `Title` / `Paragraph` / `Text` | 排版三件套：1~5 级标题 / 段落 / 行内文本，支持受控编辑、复制反馈、Unicode 字素簇截断与展开，以及 `strong()` / `italic()` / `underline()` / `delete()` / `code()` / `mark()` / `secondary()` |
 | `Kbd` | 键帽：`Kbd::new("Esc")` 单键 / `Kbd::combo("Ctrl+K")` 组合键自动拆分 |
+| `Toolbar` | 工具栏：横向 / `vertical()` 纵向动作集合，`ToolbarItem` 支持图标 / 选中 / 禁用，`separator()` / `spacer()` 结构项，方向键与 Home / End 导航 |
 
 ### 布局
 
@@ -53,6 +54,7 @@
 | `Anchor` | 锚点导航：`AnchorItem` 嵌套目录，左侧指示轨 + 当前高亮，`active()` 受控 + `on_click(&SharedString)`；滚动定位由调用方处理 |
 | `Breadcrumb` | 面包屑导航：末项为当前页不可点，`on_click(&usize)` 回调中间层级 |
 | `DropdownMenu` | 动作菜单：任意触发元素 + `MenuItem` 列表（支持分隔线 / `danger()` / `disabled()`），点动作后收起 |
+| `MenuBar` | 应用菜单栏：顶层菜单受控展开 / 选中，悬停切换，复用 `MenuItem` 多级子菜单，方向键 / Home / End / Esc |
 | `NavMenu` | 导航菜单：`MenuEntry` 嵌套子菜单，图标 / 禁用，选中与展开集合受控，`on_select()` / `on_toggle()` |
 | `Pagination` | 分页器：页码从 1 起，页数多时自动省略号折叠，边界按钮置灰，`simple()` 简洁模式，`small()` 小尺寸 |
 | `Steps` | 步骤条：完成 ✓ / 当前数字 / 待办灰，`current()` 受控，`vertical()` 纵向，`small()` 小尺寸，`progress_dot()` 点状，`descriptions()` 步骤描述 |
@@ -68,6 +70,7 @@
 | `TextInput` | 单行输入框：光标 / 选区 / 剪贴板 / 中文输入法（IME），本身是 `Entity`；`bare()` 去边框供包装，`masked()` 掩码显示；`disabled()` / `readonly()` / `error()` 状态，`allow_clear()` ✕ 清空，`max_length()` 字数上限，`prefix()` / `suffix()` 前后缀 |
 | `TextArea` | 多行输入：硬换行 / 跨行选区 / 剪贴板 / IME / 光标自动滚动，内置纵向滚动条；`height()` / `scroll_handle()` / `scroll_to_line()` / `set_scroll_offset()` / `scroll_metrics()`，本身是 `Entity`，需额外 `text_area::bind_keys` |
 | `PasswordInput` | 密码输入：掩码显示 + 明文切换按钮，本身是 `Entity` |
+| `OtpInput` | 一次性验证码：逐格录入 / 整串粘贴 / 方向键导航 / 掩码 / 完成回调，本身是 `Entity` |
 | `SearchInput` | 搜索输入：自绘放大镜图标 + ✕ 清空，`on_search()` 回车触发，本身是 `Entity` |
 | `NumberInput` | 数值输入：▲▼ 按钮 / 上下方向键步进，`min()` / `max()` / `step()`，非法输入不回调，本身是 `Entity` |
 | `Stepper` | 数值步进器：− / + 按钮，`min()` / `max()` / `step()` / `disabled()`，边界自动置灰 |
@@ -98,7 +101,8 @@
 
 | 控件 | 说明 |
 |---|---|
-| `Table` | 数据表格：`column_widths()` 列宽（默认均分），`striped()` 斑马纹，行选中受控 + `on_row_click()`；`sortable()` + `sort()` + `on_sort()` 表头排序，`selectable()` + `selected_rows()` + `on_selected_rows()` 多选，空数据自动显示空态；`pagination(page, page_size)` + `on_page_change()` 内置分页（回调仍用全局下标，全选仅当前页），`row_detail()` + `expanded_rows()` + `on_expand()` 展开行，`fixed_left()` 固定首列 + 横向滚动（与展开行互斥），`bordered()` 全边框，`show_header(bool)` 表头显隐 |
+| `Table` | 数据表格：`column_widths()` 列宽（默认均分），`striped()` 斑马纹，行选中受控 + `on_row_click()`；`sortable()` + `sort()` + `on_sort()` 表头排序，`selectable()` + `selected_rows()` + `on_selected_rows()` 多选，空数据自动显示空态；`pagination(page, page_size)` + `on_page_change()` 内置分页（回调仍用全局下标，全选仅当前页），`row_detail()` + `expanded_rows()` + `on_expand()` 展开行，`fixed_left()` / `fixed_right_columns(n)` 固定左右列 + 横向滚动（与展开行互斥），`resizable_columns(true)` 表头拖拽/键盘调宽，`filterable()` + `filter()` + `on_filter_change()` 筛选，`editable_columns()` + `editing()` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()` 受控单元格编辑，`bordered()` 全边框，`show_header(bool)` 表头显隐 |
+| `TreeTable` | 树形表格：`TreeTableNode` 行内多列 + 层级节点，展开 / 选中 / 勾选集合受控且回调使用稳定节点 id；父子级联勾选与半选态，方向键 / Home / End / 左右键 / Enter / Space 键盘操作，固定行高 `virtualized(height)` 虚拟滚动 |
 | `Tree` | 树形控件：`TreeNode` 嵌套（`Clone`），展开集合 / 选中 id 受控，`on_toggle()` / `on_select()`；`checkable()` + `checked()` + `on_check()` 勾选父子联动，`draggable()` + `on_drop_node(&TreeDrop)` 拖拽移动（重组由调用方用 `take_node()` / `find_node_mut()` / `push_child()` 完成） |
 | `List` | 列表：`ListItem` 标题 / 描述 / 头像 / `extra()` 右侧元素，`header()` / `footer()` |
 | `Card` | 卡片：标题 + `extra()` 右上操作 + `cover()` 封面 + `action()` 底部操作区，`bordered()`，`hoverable()` 悬停浮起阴影 |
@@ -108,9 +112,9 @@
 | `Calendar` | 日历：月视图大格 + 年视图 12 迷你月历，月份 / 选中日期 / 模式均受控，`on_month_change()` / `on_select()` / `on_mode_change()` |
 | `Timeline` | 时间线：`TimelineItem` 标题 / 描述 / 时间 / 节点色，`alternate()` 交替左右，`pending()` 幽灵节点 |
 | `Tag` | 标签：比徽章更紧凑，`on_close()` 显示 ✕ 移除按钮，`color(TagColor)` 8 种颜色预设，`bordered()` 边框开关 |
-| `Badge` | 徽章：`info()` / `success()` / `warning()` / `danger()`，`color()` 自定义色 |
-| `CountBadge` | 数字角标：包裹子元素右上角计数，`max()` 溢出显示 99+，`dot()` 红点模式，`show_zero()`，`color()` 自定义底色，`offset(x, y)` 位置偏移 |
-| `Avatar` | 头像：圆形背景 + 名字首字符，背景色由名字哈希确定，`size()`，`square()` 圆角方形 |
+| `Badge` | 徽章：胶囊变体或 `status(BadgeStatus)` 状态点 + `text()`；`title()` 悬停提示、`aria_label()` 无障碍名称，配色全部由 token 解析 |
+| `CountBadge` | 数字角标：包裹子元素右上角计数，`max()` 溢出显示 99+，`dot()` 红点模式，`show_zero()`，`size(BadgeSize::Small)` 小尺寸，`color()` 自定义底色，`offset(x, y)` 位置偏移，`title()` / `aria_label()` |
+| `Avatar` | 头像：名字首字符或 `image()` 图片，加载中/失败回退首字符；`image_error()` 受控失败态 + `on_image_error()` 回调，`size()` 自定义边长同步缩放文字，`square()` 圆角方形 |
 | `ImageView` | 图片：封装 gpui `img`，`from_file()` 本地文件 / `from_render()` 内存帧，`fit_cover()` / `fit_contain()` / `fit_fill()` / `rounded()` / `grayscale()`，内置 loading 与加载失败占位 |
 | `VideoPlayer` | 视频播放器（**仅 Windows**）：Media Foundation 后台解码，内置播放/暂停按钮 + 进度拖拽条，`play()` / `pause()` / `seek()`，本身是 `Entity` |
 | `Carousel` | 轮播图：`ImageSource` 列表，‹ › 循环切换 + 底部圆点直达 + 计数，`current()` 受控，需唯一 id |
@@ -125,6 +129,8 @@
 | `FunnelChart` | 漏斗图：`FunnelStage` 阶段居中梯形堆叠 + 阶段标签 + 转化率，`height()` / `gap()` |
 | `QRCode` | 二维码：纯 Rust 编码（byte 模式 / ECC L / version 1~6），`size()` 像素尺寸，自绘渲染无外部依赖 |
 | `CodeBlock` | 代码块：等宽字体逐行渲染 + 语言标签 + 一键复制按钮 |
+| `DiffView` | 行级代码差异：Myers 最短编辑路径，分栏 / 统一模式、增删统计、原行号与主题增删底色；`diff_lines()` / `diff_stats()` 为纯函数 |
+| `MarkdownEditor` | Markdown 源码编辑与实时预览：分栏 / 仅源码 / 仅预览，受控 `text` + `on_change`，复用 `TextArea` 与 `Markdown`，支持行号与滚动 |
 | `Empty` | 空状态：图标 + 标题 + `description()` + `action()` 操作区 |
 | `Segmented` | 分段选择器：圆角容器内互斥选项，适合 2~5 个短选项，`small()` / `large()` 尺寸，`block()` 占满整行 |
 | `Accordion` | 折叠面板组：多面板可同时展开，`AccordionItem` 标题 + 任意内容，展开集合受控 |
@@ -139,8 +145,11 @@
 | `Alert` | 提示条：`info()` / `success()` / `warning()` / `danger()`，`description()` / `on_close()`，`banner()` 通栏模式（无边框圆角） |
 | `Modal` | 模态对话框：遮罩 + 居中卡片，`width()` 卡片宽度，`closable()` / `mask_closable()` 控制 ✕ 与遮罩关闭，`footer()` 操作区，`id()` 实例唯一 id（默认按标题派生）；须在滚动容器之外渲染 |
 | `Drawer` | 抽屉：遮罩 + 侧滑面板，`placement(DrawerPlacement)` 左 / 右（默认右），`width()` / `footer()`，`closable()` / `mask_closable()`，`id()` 实例唯一 id（默认按标题派生）；须在滚动容器之外渲染 |
-| `ToastStack` | 轻提示堆栈：右上角浮层，`ToastItem` 四种类型，条目受控、✕ 移除 |
-| `NotificationStack` | 通知堆栈：右上角浮层，`NotificationItem` 标题 / 描述 / 类型 / `action()` 按钮，条目受控 |
+| `ToastStack` | 轻提示堆栈：顶部居中浮层，`ToastItem` 四种类型，稳定 key + `on_dismiss`，条目受控、✕ 移除 |
+| `ToastHost` | 自管轻提示：默认 3s / 4.5s / 6s 到期，悬停暂停，稳定 key，`max_count` 丢最旧，单 ticker；`Duration::ZERO` 常驻 |
+| `NotificationStack` | 通知堆栈：右上角浮层，`NotificationItem` 标题 / 描述 / 类型 / `action()` 按钮，稳定 key + `on_dismiss`，条目受控 |
+| `NotificationHost` | 自管通知：默认 4.5s 到期，悬停暂停，稳定 key，`max_count` 丢最旧，单 ticker；`Duration::ZERO` 常驻 |
+| `NotificationCenter` | 通知中心：右侧覆盖面板，历史虚拟列表、未读计数、选中 / 已读 / 删除 / 全部已读，方向键与 Home / End 导航 |
 | `Popconfirm` | 气泡确认框：包裹触发元素，`description()` / `ok_text()` / `cancel_text()`，`on_confirm()` / `on_cancel()` |
 | `ProgressBar` | 进度条（0.0 ~ 1.0），`steps(n)` 分段进度 |
 | `RingProgress` | 环形进度：自绘圆弧轨道 + 进度弧，`size()` / `thickness()` / `color()` / `label()` 中心文字 |
@@ -170,7 +179,7 @@
 
 ## 高级与宿主模块
 
-以下 8 个模块已公开并完整收录于[控件参考手册](docs/controls-reference.md#十高级与宿主模块)，但不并入上面的 98 个已文档化控件 / 101 个条目，也不把总数写成 106。
+以下 8 个模块已公开并完整收录于[控件参考手册](docs/controls-reference.md#十高级与宿主模块)，但不并入上面的 107 个已文档化控件 / 110 个条目，也不把总数写成 111。
 
 | 模块 | 状态模型 | 用途 |
 |---|---|---|
@@ -258,6 +267,9 @@ fn main() {
 cargo run --example minimal
 cargo run --example integration   # 集成指南配套示例
 cargo run --example gallery
+cargo run --example notification_center # 通知中心、虚拟列表与已读 / 删除交互
+cargo run --example tree_table         # 树形表格、级联勾选、键盘导航与虚拟滚动
+cargo run --example data_grid         # Table 筛选、列宽拖拽、固定左右列与单元格编辑
 cargo run --example gen_assets   # 重新生成演示视频 examples/assets/sample.avi（仓库已附带）
 ```
 
@@ -265,26 +277,28 @@ cargo run --example gen_assets   # 重新生成演示视频 examples/assets/samp
 
 - **无状态控件**（Button / Checkbox / Switch / Radio / Slider / ProgressBar / Badge /
   Tabs / Segmented / Select / Alert / Spinner / Avatar / Tag / Stepper / Accordion /
-  Breadcrumb / Pagination / Rating / Table / Tree / DropdownMenu / Popover /
+  Breadcrumb / Pagination / Rating / Table / TreeTable / Tree / DropdownMenu / Popover /
   DatePicker / ColorPicker / ToastStack / NavMenu / Card / Descriptions / List /
   CountBadge / Calendar / QRCode / Cascader / TimePicker / TreeSelect / Transfer /
-  FormItem / UploadList / Popconfirm / NotificationStack / Tour / Anchor / Upload）：
+  FormItem / UploadList / Popconfirm / NotificationStack / NotificationCenter / Tour / Anchor / Upload）：
   值与回调由调用方传入，状态保存在你自己的视图 `Entity` 中，回调里改状态后 `cx.notify()`。
   回调签名统一为 `Fn(&E, &mut Window, &mut App)`，可直接用 `cx.listener(...)` 构造。
+- **ToastHost / NotificationHost 是自管 Entity**：用 `cx.new(|cx| ToastHost::new(cx))` / `NotificationHost::new(cx)` 创建，render 中 `.clone()` 挂载；调用 `show` / `show_with` 弹提示，`on_dismiss` 为 `Fn(&Event, &mut App)`（无 Window），用 `weak_entity()` 或实体句柄更新父视图。二者须放在根视图最后一个子元素、滚动容器之外。
 - **Select / MultiSelect 的展开状态受控**：父视图持有 `open: bool`，
   用 `.open(self.open)` + `.on_open_change(...)` 回写；单选用 `.on_select(&usize)`，
   多选用 `.on_change(&Vec<usize>)`。菜单宽度默认等于触发框宽度，可用 `.menu_width(px(...))` 覆盖；
   菜单贴触发框下方 4px 展开，窗口下方放不下时自动翻转到框上方。
   单选额外支持 `.value(Option<usize>)` 空选中、`.allow_clear(true)` ✕ 清空（`on_clear` 为 2 参回调）、
   `.searchable(true)` 菜单顶部搜索框过滤选项。
-- **Modal / Drawer / ToastStack / NotificationStack / Tour 的渲染位置**：放在根视图最后一个子元素、滚动容器之外；
+- **Modal / Drawer / ToastStack / ToastHost / NotificationStack / NotificationHost / NotificationCenter / Tour 的渲染位置**：放在根视图最后一个子元素、滚动容器之外；
   **叠层弹窗/抽屉**：✕ 与遮罩的 element id 默认按标题派生，标题不同即互不干扰；
   标题相同时必须给每层传彼此不同的 `.id(...)`，否则共享交互态会让内层 ✕ 点了没反应、外层反而进 active 态
   （id 须跨帧稳定，勿用每帧自增计数器）；
   Modal / Drawer 的 `on_close` 签名为 `Fn(&mut Window, &mut App)`（无事件参数），不适用 `cx.listener`，
   可用 `cx.entity()` 句柄在闭包内 `entity.update(cx, …)`；
   DropdownMenu 的 `MenuItem::on_click`、FloatButton 的 `on_click`、Popconfirm 的 `on_confirm` / `on_cancel`、
-  Tour 的 `on_close`、Select / DatePicker 的 `on_clear`、Upload 的 `on_click` 同样是该签名。
+  Tour 的 `on_close`、Select / DatePicker 的 `on_clear`、Upload 的 `on_click` 同样是该签名；
+  NotificationCenter 的 `on_mark_all_read` / `on_dismiss` 也是该签名。
 - **Tooltip 是包装器**：`Tooltip::new("提示文字", 任意控件)`，悬停延迟与定位由 GPUI 原生处理。
 - **TextInput 是有状态视图**：用 `cx.new(|cx| TextInput::new(cx))` 创建，
   render 中 `.child(input.clone())`；读取用 `input.read(cx).text()`，
@@ -302,8 +316,10 @@ cargo run --example gen_assets   # 重新生成演示视频 examples/assets/samp
   不传时默认显示选中值所在月（无值则当前月）；不接 `on_month_change` 时月导航不生效。
   DateRangePicker 同约定（月份默认取起点所在月）；待选起点按 id 跨帧持久化，收起 / 清空时自动丢弃。
 - **Table 分页与固定列**：分页受控（页码从 1 起），排序 / 选中 / 展开等回调一律用**全局行下标**，
-  表头全选只作用当前页；`fixed_left()` 要求统一行高（37px），未指定列宽的列默认 120px，
-  与 `row_detail()` 同时设置时展开行不生效。
+  表头全选只作用当前页；`fixed_left()` / `fixed_right_columns(n)` 要求统一行高（37px），未指定列宽的列默认 120px，
+  与 `row_detail()` 同时设置时展开行不生效。`filterable()` 在分页前筛选，`resizable_columns(true)` 需接
+  `on_column_resize()` 回写列宽；`editable_columns()` + `editing()` 受控，双击或聚焦单元格后按 Enter/Space 编辑，
+  Enter 或失焦提交。
 - **Form 校验是受控 helper**：`validate(&value, &[Rule])` 返回首条未通过规则的错误消息（`Option<SharedString>`），
   存入视图状态后交给 `FormItem::error_opt()` 显示；控件本身不持有校验状态，提交时机由调用方决定。
 - **Tree 的节点 id**：同一棵树内唯一即可，展开集合与选中值都用 id 标识（`Vec<SharedString>` / `Option<SharedString>`）；
