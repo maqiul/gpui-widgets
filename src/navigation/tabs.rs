@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::a11y;
+use crate::motion;
 use crate::theme::{self, Tokens, metric};
 
 /// 页签形态：下划线（默认）/ 卡片。
@@ -414,6 +415,32 @@ impl RenderOnce for Tabs {
                 let style = tabs_item_state(tokens, kind, state);
                 let hover = tabs_item_state(tokens, kind, TabsState::Hover);
                 let active = tabs_item_state(tokens, kind, TabsState::Active);
+                let selected_surface = if card {
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded_t(px(m.card_radius[size]))
+                        .bg(style.bg)
+                } else {
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .h(px(m.ink_height))
+                        .bg(ink)
+                };
+                let selected_overlay = motion::AnimatedValue::new(
+                    format!("{tab_id}-selected"),
+                    selected_surface,
+                    f32::from(style.ink),
+                    |overlay, progress| overlay.opacity(progress),
+                )
+                .duration(if is_disabled {
+                    std::time::Duration::ZERO
+                } else {
+                    motion::fast_duration()
+                });
 
                 let mut tab = a11y::Semantics::new(Role::Tab, label.clone())
                     .id(tab_id.clone())
@@ -443,7 +470,11 @@ impl RenderOnce for Tabs {
                         .rounded_t(px(m.card_radius[size]))
                         .border_1()
                         .border_color(style.border)
-                        .bg(style.bg)
+                        .bg(if style.ink {
+                            transparent_black()
+                        } else {
+                            style.bg
+                        })
                         .mb(px(-m.divider_width));
                     if style.ink {
                         // 选中卡片的下边框与容器同色，盖住导航分隔线
@@ -462,8 +493,9 @@ impl RenderOnce for Tabs {
                         .pt(px(m.padding_block[size]))
                         .pb(px(m.padding_block[size] - m.ink_height))
                         .border_b(px(m.ink_height))
-                        .border_color(if style.ink { ink } else { transparent_black() });
+                        .border_color(transparent_black());
                 }
+                tab = tab.child(selected_overlay);
 
                 // 拖拽排序：拖起时渲染标签幽灵，拖到目标页签时高亮并释放回调
                 if self.draggable && !is_disabled {
@@ -510,7 +542,7 @@ impl RenderOnce for Tabs {
                         a11y::Semantics::new(Role::Button, format!("关闭标签页 {label}"))
                             .id(close_id.clone())
                             .focusable(self.on_close.is_some())
-                            .apply(div().id(ElementId::Name(close_id.into())))
+                            .apply(div().id(ElementId::Name(close_id.clone().into())))
                             .flex()
                             .items_center()
                             .flex_shrink_0()
@@ -518,13 +550,18 @@ impl RenderOnce for Tabs {
                             .text_size(px(m.close_size))
                             .line_height(px(m.close_size))
                             .text_color(close_color)
-                            .hover(move |style| {
-                                style
-                                    .text_color(close_hover)
-                                    .text_size(px(m.close_size))
-                                    .line_height(px(m.close_size))
-                            })
-                            .child("✕")
+                            .child(motion::hover_transition(
+                                format!("{close_id}-hover"),
+                                div().child("✕"),
+                                move |glyph, progress| {
+                                    glyph.text_color(motion::interactive_color(
+                                        close_color,
+                                        close_hover,
+                                        close_hover,
+                                        progress,
+                                    ))
+                                },
+                            ))
                             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                                 cx.stop_propagation();
                             });

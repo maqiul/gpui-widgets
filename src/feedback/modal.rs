@@ -12,7 +12,7 @@ use gpui::{
 
 use crate::a11y::{self, Semantics};
 use crate::{
-    theme,
+    motion, theme,
     theme::metric::{ModalMetric, modal_style},
 };
 
@@ -149,7 +149,7 @@ impl IntoElement for Modal {
             .focusable(true);
 
         let mut card = div()
-            .id(ElementId::Name(dialog_id.into()))
+            .id(ElementId::Name(dialog_id.clone().into()))
             .relative()
             .flex()
             .flex_col()
@@ -228,9 +228,14 @@ impl IntoElement for Modal {
             }
         }
         let card = dialog_semantics.apply(card);
+        let card = motion::enter(
+            format!("modal-card-enter-{dialog_id}"),
+            card,
+            |card, progress| card.opacity(progress).mt(px((1.0 - progress) * 8.0)),
+        );
 
         let mut backdrop = div()
-            .id(ElementId::Name(backdrop_id.into()))
+            .id(ElementId::Name(backdrop_id.clone().into()))
             .absolute()
             .inset_0()
             // 阻断 hover/点击穿透到遮罩下层内容
@@ -248,7 +253,10 @@ impl IntoElement for Modal {
             }
         }
 
-        backdrop.into_any_element()
+        motion::enter(backdrop_id, backdrop, |backdrop, progress| {
+            backdrop.opacity(progress)
+        })
+        .into_any_element()
     }
 }
 

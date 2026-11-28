@@ -76,7 +76,9 @@ fn sample(index: usize) -> Option<ProgressBar> {
         2 => ProgressBar::new(0.3).show_info(false),
         3 => ProgressBar::new(1.0).status(ProgressStatus::Success),
         4 => ProgressBar::new(0.5).status(ProgressStatus::Exception),
-        5 => ProgressBar::new(0.5).status(ProgressStatus::Active),
+        5 => ProgressBar::new(0.5)
+            .status(ProgressStatus::Active)
+            .animated(false),
         6 => ProgressBar::new(0.3).steps(5),
         7 => ProgressBar::new(0.3).steps(5).small(true),
         _ => return None,

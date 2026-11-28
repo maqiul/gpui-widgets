@@ -107,13 +107,7 @@ fn breathing_opacity(active: bool, delta: f32) -> Option<f32> {
     if !active {
         return None;
     }
-    // 透明度在 0.45 ~ 1.0 之间往返
-    let phase = if delta < 0.5 {
-        delta * 2.
-    } else {
-        2. - delta * 2.
-    };
-    Some(0.45 + 0.55 * phase)
+    Some(crate::motion::pulse(delta, 0.45, 1.0))
 }
 
 impl IntoElement for Skeleton {

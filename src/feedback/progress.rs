@@ -2,9 +2,12 @@
 //!
 //! 对齐 antdv-next Progress（`.ant-progress-body` 行盒、轨道/分段 + 指示器）。
 
-use gpui::{Div, ElementId, Hsla, IntoElement, Role, Stateful, div, prelude::*, px, relative};
+use gpui::{
+    AnyElement, Div, ElementId, Hsla, IntoElement, Role, Stateful, div, prelude::*, px, relative,
+};
 
 use crate::a11y::Semantics;
+use crate::motion::{self, LoopEffect};
 use crate::theme::{self, Tokens, metric};
 
 /// 进度状态：正常 / 进行中 / 成功 / 异常。
@@ -78,6 +81,7 @@ pub struct ProgressBar {
     status: ProgressStatus,
     show_info: bool,
     small: bool,
+    animated: bool,
 }
 
 impl ProgressBar {
@@ -98,6 +102,7 @@ impl ProgressBar {
             status: ProgressStatus::Normal,
             show_info: true,
             small: false,
+            animated: true,
         }
     }
 
@@ -131,6 +136,12 @@ impl ProgressBar {
 
     pub fn small(mut self, small: bool) -> Self {
         self.small = small;
+        self
+    }
+
+    /// 关闭 Active 状态的流光，用于确定性截图和减少动态效果。
+    pub fn animated(mut self, animated: bool) -> Self {
+        self.animated = animated;
         self
     }
 }
@@ -226,6 +237,22 @@ impl IntoElement for ProgressBar {
             return semantics.apply(body);
         }
 
+        let fill = div()
+            .h_full()
+            .w(relative(value))
+            .rounded(px(style.radius))
+            .bg(style.track);
+        let fill: AnyElement = if self.status == ProgressStatus::Active && self.animated {
+            motion::MotionLoop::new(
+                ElementId::Name(format!("{id:?}-shimmer").into()),
+                fill,
+                LoopEffect::Shimmer,
+            )
+            .into_any_element()
+        } else {
+            fill.into_any_element()
+        };
+
         let mut row = div()
             .id(ElementId::Name(id.into()))
             .flex()
@@ -242,13 +269,7 @@ impl IntoElement for ProgressBar {
                     .rounded(px(style.radius))
                     .overflow_hidden()
                     .bg(style.rail)
-                    .child(
-                        div()
-                            .h_full()
-                            .w(relative(value))
-                            .rounded(px(style.radius))
-                            .bg(style.track),
-                    ),
+                    .child(fill),
             );
 
         if self.show_info {

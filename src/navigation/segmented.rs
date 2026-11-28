@@ -8,6 +8,7 @@ use gpui::{
 };
 
 use crate::a11y;
+use crate::motion;
 use crate::theme::{self, Tokens, metric};
 
 /// 选项的交互状态。
@@ -195,18 +196,62 @@ impl IntoElement for Segmented {
                 } else {
                     SegmentedState::Normal
                 };
-                let style = segmented_item_state(tokens, state);
+                let style = SegmentedItemStyle {
+                    bg: segmented_track_state(tokens),
+                    ..segmented_item_state(tokens, state)
+                };
+                let selected_style = segmented_item_state(
+                    tokens,
+                    if self.disabled {
+                        SegmentedState::SelectedDisabled
+                    } else {
+                        SegmentedState::Selected
+                    },
+                );
                 let hover = segmented_item_state(tokens, SegmentedState::Hover);
                 let on_select = self.on_select.clone();
 
                 let segment_id = format!("{owner}-segment-{ix}");
+                let selected_overlay = motion::AnimatedValue::new(
+                    format!("{segment_id}-selected"),
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(px(m.item_radius[size]))
+                        .bg(selected_style.bg),
+                    f32::from(selected),
+                    move |overlay, progress| overlay.opacity(progress),
+                )
+                .duration(if self.disabled {
+                    std::time::Duration::ZERO
+                } else {
+                    motion::fast_duration()
+                });
+                let label_motion = motion::AnimatedValue::new(
+                    format!("{segment_id}-label"),
+                    div().child(label.clone()),
+                    f32::from(selected),
+                    move |label, progress| {
+                        label.text_color(motion::mix_color(
+                            style.text,
+                            selected_style.text,
+                            progress,
+                        ))
+                    },
+                )
+                .duration(if self.disabled {
+                    std::time::Duration::ZERO
+                } else {
+                    motion::fast_duration()
+                });
                 let mut segment = a11y::Semantics::new(Role::Tab, label.clone())
                     .id(segment_id.clone())
                     .selected(selected)
                     .disabled(self.disabled)
                     .focusable(!self.disabled && self.on_select.is_some())
                     .position(ix + 1, item_count)
-                    .apply(div().id(ElementId::Name(segment_id.into())))
+                    .apply(div().id(ElementId::Name(segment_id.clone().into())))
+                    .relative()
                     .flex()
                     .items_center()
                     .justify_center()
@@ -218,22 +263,25 @@ impl IntoElement for Segmented {
                     .line_height(px(m.label_height[size]))
                     .text_size(px(m.font_size[size]))
                     .text_color(style.text)
-                    .bg(style.bg)
+                    .bg(segmented_track_state(tokens))
                     .cursor(if self.disabled {
                         CursorStyle::Arrow
                     } else {
                         CursorStyle::PointingHand
-                    })
-                    .child(label);
+                    });
+
+                segment = segment.child(selected_overlay);
+                segment = segment.child(if selected {
+                    label_motion.into_any_element()
+                } else {
+                    div().child(label).into_any_element()
+                });
 
                 if style.shadow {
                     segment = segment.shadow(tokens.shadow_tertiary.0.clone());
                 }
                 if self.block {
                     segment = segment.flex_1();
-                }
-                if !self.disabled && !selected {
-                    segment = segment.hover(move |style| style.text_color(hover.text).bg(hover.bg));
                 }
                 if !self.disabled {
                     if let Some(on_select) = on_select {
@@ -256,7 +304,25 @@ impl IntoElement for Segmented {
                     }
                 }
 
-                container = container.child(segment);
+                let mut segment_motion = motion::AnimatedValue::new(
+                    format!("{segment_id}-hover"),
+                    segment,
+                    0.0,
+                    move |segment, progress| {
+                        segment
+                            .bg(motion::mix_color(style.bg, hover.bg, progress))
+                            .text_color(motion::mix_color(style.text, hover.text, progress))
+                    },
+                )
+                .duration(if self.disabled {
+                    std::time::Duration::ZERO
+                } else {
+                    motion::fast_duration()
+                });
+                if !self.disabled && !selected {
+                    segment_motion = segment_motion.hover_refresh(motion::bind_hover_refresh);
+                }
+                container = container.child(segment_motion);
             }
 
             container

@@ -498,6 +498,7 @@ impl RenderOnce for MenuBar {
                     popup_bounds.clone(),
                     &menu_focus,
                     None,
+                    window,
                     cx,
                 );
                 Some(div().child(menu))

@@ -16,6 +16,7 @@ use gpui::{
 use crate::a11y::{self, Semantics};
 use crate::button::Button;
 use crate::feedback::notice_timer::{NOTICE_TICK, NoticeTimer, trim_oldest};
+use crate::motion;
 use crate::svg_path::{paint_svg, svg_segments};
 use crate::theme::{self, metric};
 
@@ -232,7 +233,7 @@ pub fn notification_card(
             },
         ) as NotificationDismissListener
     });
-    notification_card_internal(item, ix, on_close, None)
+    notification_card_internal(item, ix, on_close, None, true)
 }
 
 fn notification_card_internal(
@@ -240,6 +241,7 @@ fn notification_card_internal(
     ix: usize,
     on_close: Option<NotificationDismissListener>,
     on_hover: Option<NotificationHoverListener>,
+    visible: bool,
 ) -> impl IntoElement {
     let (m, cs, shadow) = theme::with(|t| {
         (
@@ -306,7 +308,7 @@ fn notification_card_internal(
     }
 
     let mut card = div()
-        .id(ElementId::Name(notification_id.into()))
+        .id(ElementId::Name(notification_id.clone().into()))
         .relative()
         .flex()
         .flex_row()
@@ -385,7 +387,19 @@ fn notification_card_internal(
             .apply(close);
         card = card.child(close);
     }
-    semantics.apply(card)
+    let card = semantics.apply(card);
+    let animated = motion::AnimatedValue::new(
+        format!("notification-motion-{notification_id}"),
+        card,
+        f32::from(visible),
+        |card, progress| card.opacity(progress).mt(px(-(1.0 - progress) * 8.0)),
+    )
+    .duration(motion::mid_duration());
+    if visible {
+        animated.initial(0.0)
+    } else {
+        animated
+    }
 }
 
 pub(crate) fn notification_stack_container() -> Div {
@@ -474,7 +488,7 @@ impl IntoElement for NotificationStack {
                     },
                 ) as NotificationDismissListener
             });
-            stack = stack.child(notification_card_internal(item, ix, listener, None));
+            stack = stack.child(notification_card_internal(item, ix, listener, None, true));
         }
         deferred(stack)
     }
@@ -484,6 +498,8 @@ struct NotificationHostEntry {
     item: NotificationItem,
     key: SharedString,
     timer: NoticeTimer,
+    exit: motion::ExitState,
+    exit_by_timer: bool,
 }
 
 /// 自管通知容器。渲染在根视图、滚动容器之外，条目按最新在上排列。
@@ -541,6 +557,8 @@ impl NotificationHost {
         if let Some(entry) = self.entries.iter_mut().find(|entry| entry.key == key) {
             entry.item = item;
             entry.timer.restart(duration, now);
+            entry.exit.cancel();
+            entry.exit_by_timer = false;
         } else {
             self.entries.insert(
                 0,
@@ -548,6 +566,8 @@ impl NotificationHost {
                     item,
                     key,
                     timer: NoticeTimer::new(duration, now),
+                    exit: motion::ExitState::default(),
+                    exit_by_timer: false,
                 },
             );
             trim_oldest(&mut self.entries, self.config.max_count);
@@ -574,19 +594,16 @@ impl NotificationHost {
     }
 
     fn dismiss_inner(&mut self, key: &SharedString, cx: &mut Context<Self>) -> bool {
-        let Some(index) = self.entries.iter().position(|entry| entry.key == *key) else {
+        let Some(entry) = self.entries.iter_mut().find(|entry| entry.key == *key) else {
             return false;
         };
-        self.entries.remove(index);
-        let event = NotificationDismissed {
-            key: Some(key.clone()),
-            index,
-            by_timer: false,
-        };
-        if let Some(listener) = &self.on_dismiss {
-            listener(&event, cx);
+        if entry.exit.is_exiting() {
+            return false;
         }
+        entry.exit.begin(Instant::now());
+        entry.exit_by_timer = false;
         cx.notify();
+        self.start_ticker(cx);
         true
     }
 
@@ -594,6 +611,9 @@ impl NotificationHost {
         let Some(entry) = self.entries.iter_mut().find(|entry| entry.key == *key) else {
             return;
         };
+        if entry.exit.is_exiting() {
+            return;
+        }
         if entry
             .item
             .pause_on_hover
@@ -609,7 +629,7 @@ impl NotificationHost {
     fn has_active_timers(&self) -> bool {
         self.entries
             .iter()
-            .any(|entry| entry.timer.has_active_timer())
+            .any(|entry| entry.exit.is_exiting() || entry.timer.has_active_timer())
     }
 
     fn refresh_ticker_state(&mut self) -> bool {
@@ -639,18 +659,31 @@ impl NotificationHost {
 
     fn tick(&mut self, cx: &mut Context<Self>) -> bool {
         let now = Instant::now();
+        let exit_duration = if cx.reduce_motion() {
+            Duration::ZERO
+        } else {
+            motion::mid_duration()
+        };
         let mut expired = Vec::new();
         let mut index = 0;
-        self.entries.retain(|entry| {
+        self.entries.retain_mut(|entry| {
             let current = index;
             index += 1;
-            if entry.timer.expired(now) {
-                expired.push(NotificationDismissed {
-                    key: Some(entry.key.clone()),
-                    index: current,
-                    by_timer: true,
-                });
-                false
+            if entry.exit.is_exiting() {
+                if entry.exit.is_complete(now, exit_duration) {
+                    expired.push(NotificationDismissed {
+                        key: Some(entry.key.clone()),
+                        index: current,
+                        by_timer: entry.exit_by_timer,
+                    });
+                    false
+                } else {
+                    true
+                }
+            } else if entry.timer.expired(now) {
+                entry.exit.begin(now);
+                entry.exit_by_timer = true;
+                true
             } else {
                 true
             }
@@ -684,6 +717,7 @@ impl Render for NotificationHost {
                 ix,
                 Some(Rc::new(listener)),
                 Some(Rc::new(hover)),
+                !entry.exit.is_exiting(),
             ));
         }
         deferred(stack)
@@ -724,6 +758,8 @@ mod tests {
                 item: NotificationItem::new("a"),
                 key: SharedString::from("a"),
                 timer: NoticeTimer::new(Duration::from_secs(3), now),
+                exit: motion::ExitState::default(),
+                exit_by_timer: false,
             }],
             next_key: 2,
             config: NotificationConfig::default(),

@@ -10,10 +10,12 @@ use gpui::{
     Pixels, Role, SharedString, Window, deferred, div, prelude::*, px,
 };
 
-use crate::a11y::{self, Semantics};
-use crate::controls::scrollbar::VerticalScroll;
-use crate::theme;
 use crate::theme::metric::{DrawerMetric, drawer_style};
+use crate::{
+    a11y::{self, Semantics},
+    controls::scrollbar::VerticalScroll,
+    motion, theme,
+};
 
 /// 抽屉弹出方向
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -141,6 +143,8 @@ impl IntoElement for Drawer {
     fn into_element(self) -> Self::Element {
         let m = theme::with(DrawerMetric::resolve);
         let style = theme::with(drawer_style);
+        let placement = self.placement;
+        let width = self.width;
         let (shadow, title_weight) =
             theme::with(|t| (t.shadow_secondary.0.clone(), t.font_weight_strong));
         let on_close = self.on_close.clone();
@@ -199,7 +203,7 @@ impl IntoElement for Drawer {
         );
 
         let mut panel = div()
-            .id(ElementId::Name(dialog_id.into()))
+            .id(ElementId::Name(dialog_id.clone().into()))
             .flex()
             .flex_col()
             .w(self.width)
@@ -241,13 +245,26 @@ impl IntoElement for Drawer {
             );
         }
         let panel = dialog_semantics.apply(panel);
+        let panel = motion::enter(
+            format!("drawer-panel-enter-{dialog_id}"),
+            panel,
+            move |panel, progress| match placement {
+                DrawerPlacement::Right => panel
+                    .opacity(progress)
+                    .mr(px(-(1.0 - progress) * f32::from(width))),
+                DrawerPlacement::Left => panel
+                    .opacity(progress)
+                    .ml(px(-(1.0 - progress) * f32::from(width))),
+            },
+        );
 
         let mut backdrop = div()
-            .id(ElementId::Name(backdrop_id.into()))
+            .id(ElementId::Name(backdrop_id.clone().into()))
             .absolute()
             .inset_0()
             // 阻断 hover/点击穿透到遮罩下层内容
             .occlude()
+            .overflow_hidden()
             .bg(style.mask)
             .flex()
             .flex_row();
@@ -263,7 +280,11 @@ impl IntoElement for Drawer {
             }
         }
 
-        deferred(backdrop)
+        deferred(motion::enter(
+            backdrop_id,
+            backdrop,
+            |backdrop, progress| backdrop.opacity(progress),
+        ))
     }
 }
 

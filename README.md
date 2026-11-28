@@ -115,7 +115,7 @@
 | `Badge` | 徽章：胶囊变体或 `status(BadgeStatus)` 状态点 + `text()`；`title()` 悬停提示、`aria_label()` 无障碍名称，配色全部由 token 解析 |
 | `CountBadge` | 数字角标：包裹子元素右上角计数，`max()` 溢出显示 99+，`dot()` 红点模式，`show_zero()`，`size(BadgeSize::Small)` 小尺寸，`color()` 自定义底色，`offset(x, y)` 位置偏移，`title()` / `aria_label()` |
 | `Avatar` | 头像：名字首字符或 `image()` 图片，加载中/失败回退首字符；`image_error()` 受控失败态 + `on_image_error()` 回调，`size()` 自定义边长同步缩放文字，`square()` 圆角方形 |
-| `ImageView` | 图片：封装 gpui `img`，`from_file()` 本地文件 / `from_render()` 内存帧，`fit_cover()` / `fit_contain()` / `fit_fill()` / `rounded()` / `grayscale()`，内置 loading 与加载失败占位 |
+| `ImageView` | 图片：封装 gpui `img`，支持本地文件 / http(s) / 内存帧，`fit_cover()` / `fit_contain()` / `fit_fill()` / `rounded()` / `grayscale()`，内置 loading 与失败占位；远程图可配 `RemoteImageCache` 获得有界 LRU、超时、重试与大小限制 |
 | `VideoPlayer` | 视频播放器（**仅 Windows**）：Media Foundation 后台解码，内置播放/暂停按钮 + 进度拖拽条，`play()` / `pause()` / `seek()`，本身是 `Entity` |
 | `Carousel` | 轮播图：`ImageSource` 列表，‹ › 循环切换 + 底部圆点直达 + 计数，`current()` 受控，需唯一 id |
 | `BarChart` | 柱状图：`BarDatum` 标签 + 数值 + 单柱颜色，`height()` / `max()` |
@@ -176,6 +176,8 @@
 | `misc` | 布局辅助：`card()` / `Divider` / `section_title()` / `caption()` / `field_row()` |
 | `theme` | 统一主题：21 个语义色（`bg()` / `surface()` / `accent()` / `text()` 等），全局可配置：`Theme::light()` / `Theme::dark()` 内置明暗两套，`set_theme()` 整体切换、`set_accent()` 换品牌主色（悬停/按下/柔和底自动派生）、`update()` 微调单色 |
 | `FpsMeter` | 帧率/性能监视器：本身是 `Entity`，独立驱动连续渲染仅重绘自身，实测 FPS + 帧耗时 + 曲线；`max_fps()` 标称上限（默认 120）、`running()` / `start()` / `stop()`；实际帧率跟随显示器 vsync |
+
+`motion` 提供全局动效基元：控件状态过渡、浮层进入、通知退场、持续 Pulse / Shimmer；时长读取主题 motion token，尊重 `reduce_motion`，静止时不请求动画帧。用法见[动效与减少动态效果](docs/controls-reference.md#17-动效与减少动态效果)，运行 `cargo run --example motion_demo` 可查看实际效果。
 
 ## 高级与宿主模块
 
@@ -342,9 +344,13 @@ cargo run --example gen_assets   # 重新生成演示视频 examples/assets/samp
   `cx.new(|cx| Countdown::after(Duration::from_secs(90), cx))` 创建后自动每秒刷新，
   `on_finish` 为 1 参 `Fn(&mut App)`（定时器上下文无 Window），归零触发一次后停止计时，
   实体释放后计时循环自动退出；重新开始 = 重建实体。
-- **ImageView 的来源语义**：`ImageView::new("字符串")` 走 GPUI 资产系统（Embedded），**不是磁盘路径**；
-  本地文件一律用 `ImageView::from_file(path)`。尺寸/布局通过 `Styled` 转发（`.w() / .h() / .flex()` 等），
+- **ImageView 的来源语义**：`ImageView::new("https://…")` 走远程 URI；普通字符串走 GPUI 资产系统（Embedded），
+  **都不是磁盘路径**，本地文件一律用 `ImageView::from_file(path)`。尺寸/布局通过 `Styled` 转发（`.w() / .h() / .flex()` 等），
   加载中和失败占位可用 `.loading(|| …)` / `.fallback(|| …)` 自定义。
+- **远程图片缓存**：先由宿主通过 `cx.set_http_client(client)` 安装真实 `HttpClient`，再创建一个
+  `RemoteImageCache` 并用 `remote_image_cache(cache)` 包住图片子树。默认单次完整请求 20 秒超时、失败额外重试 2 次、
+  响应体 8 MiB、解码图与缓存合计 64 MiB、128 个条目；失败结果默认缓存 30 秒后允许重新请求。
+  `clear(window, cx)` / `remove(&resource, window, cx)` 会取消在途任务并释放对应图像。
 - **VideoPlayer 是有状态视图，仅 Windows**：`cx.new(|cx| VideoPlayer::new(cx, path))` 创建后自动播放，
   render 中 `.child(video.clone())`；控制用 `video.update(cx, |v, cx| v.pause(cx))`（另有 `play` / `toggle` / `seek(secs)`），
   读取用 `position()` / `duration()`（秒）/ `is_playing()`。解码在后台线程（MF SourceReader），

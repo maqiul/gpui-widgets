@@ -20,7 +20,7 @@ use gpui::{
 
 use crate::theme::Tokens;
 use crate::theme::metric::{self, ButtonMetric};
-use crate::{Spinner, a11y, theme};
+use crate::{Spinner, a11y, motion, theme};
 
 /// 样式变体，对应 antd 的 `variant`
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -498,6 +498,7 @@ impl IntoElement for Button {
             )
         });
         let interactive = !self.disabled && !self.loading && self.on_click.is_some();
+        let animated = !self.disabled && !self.loading;
         let element_id = ElementId::Name(
             self.id
                 .clone()
@@ -545,28 +546,7 @@ impl IntoElement for Button {
         element = if self.disabled {
             element.cursor(CursorStyle::Arrow)
         } else {
-            element
-                .cursor(CursorStyle::PointingHand)
-                .hover(move |style| {
-                    style
-                        .bg(hover.bg)
-                        .text_color(hover.fg)
-                        .border_color(hover.border)
-                        .shadow(hover.shadows())
-                        // gpui 0.2.2 Style.text 非 refineable：状态 refinement 整块替换 text，
-                        // 只写色会丢 font_size/font_weight（active 参与布局 ⇒ 按下变大）。
-                        .text_size(px(metric.font_size[size]))
-                        .font_weight(metric.font_weight)
-                })
-                .active(move |style| {
-                    style
-                        .bg(active.bg)
-                        .text_color(active.fg)
-                        .border_color(active.border)
-                        .shadow(active.shadows())
-                        .text_size(px(metric.font_size[size]))
-                        .font_weight(metric.font_weight)
-                })
+            element.cursor(CursorStyle::PointingHand)
         };
 
         if with_children {
@@ -595,6 +575,30 @@ impl IntoElement for Button {
             .id(format!("{:?}", element_id))
             .disabled(self.disabled || self.loading)
             .focusable(interactive);
-        semantics.apply(element)
+        let element = semantics.apply(element);
+        let motion_id = format!("button-motion-{element_id:?}");
+        let motion_value =
+            motion::AnimatedValue::new(motion_id, element, 0.0, move |mut element, value| {
+                let fg = motion::interactive_color(normal.fg, hover.fg, active.fg, value);
+                let bg = motion::interactive_color(normal.bg, hover.bg, active.bg, value);
+                let border =
+                    motion::interactive_color(normal.border, hover.border, active.border, value);
+                element = element
+                    .bg(bg)
+                    .text_color(fg)
+                    .border_color(border)
+                    .shadow(normal.shadows())
+                    .text_size(px(metric.font_size[size]))
+                    .font_weight(metric.font_weight);
+                element
+            })
+            .duration(motion::fast_duration());
+        let motion_value = if animated {
+            motion_value.hover_refresh(motion::bind_hover_refresh)
+        } else {
+            motion_value
+        };
+        let root_id = ElementId::Name(format!("{element_id:?}-motion-root").into());
+        div().id(root_id).child(motion_value)
     }
 }

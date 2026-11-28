@@ -113,7 +113,7 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `Badge` | Badge: pill variants or `status(BadgeStatus)` dot + `text()`; `title()` tooltip and `aria_label()` accessible name, with all colors resolved from tokens |
 | `CountBadge` | Numeric badge: top-right count, `max()` overflow as 99+, `dot()` mode, `show_zero()`, `size(BadgeSize::Small)`, custom `color()`, `offset(x, y)`, `title()` and `aria_label()` |
 | `Avatar` | Avatar: first character of the name or an `image()`; falls back to the initial while loading or on failure; controlled `image_error()` + `on_image_error()` callback; `size()` scales text with custom dimensions; `square()` rounded-square shape |
-| `ImageView` | Image: wraps gpui `img`, `from_file()` local file / `from_render()` in-memory frame, `fit_cover()` / `fit_contain()` / `fit_fill()` / `rounded()` / `grayscale()`, with built-in loading and load-failure placeholders |
+| `ImageView` | Image: wraps GPUI `img`; supports local files / HTTP(S) / in-memory frames, `fit_cover()` / `fit_contain()` / `fit_fill()` / `rounded()` / `grayscale()`, with built-in loading and failure placeholders; pair remote images with `RemoteImageCache` for bounded LRU, timeout, retry, and size limits |
 | `VideoPlayer` | Video player (**Windows only**): Media Foundation background decoding, built-in play/pause button + draggable progress bar, `play()` / `pause()` / `seek()`; is itself an `Entity` |
 | `Carousel` | Carousel: `ImageSource` list, ‹ › cyclic navigation + bottom-dot direct access + counter, controlled `current()`; requires a unique id |
 | `BarChart` | Bar chart: `BarDatum` label + value + per-bar color, `height()` / `max()` |
@@ -174,6 +174,8 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `misc` | Layout helpers: `card()` / `Divider` / `section_title()` / `caption()` / `field_row()` |
 | `theme` | Unified theme: 21 semantic colors (`bg()` / `surface()` / `accent()` / `text()`, etc.), globally configurable: built-in light and dark themes via `Theme::light()` / `Theme::dark()`, `set_theme()` switches the entire theme, `set_accent()` changes the brand primary color (hover/pressed/soft backgrounds are derived automatically), `update()` fine-tunes a single color |
 | `FpsMeter` | FPS/performance monitor: is itself an `Entity`; independently drives continuous rendering and repaints only itself; measured FPS + frame time + graph; `max_fps()` nominal cap (120 by default), `running()` / `start()` / `stop()`; actual frame rate follows the display's vsync |
+
+The `motion` module provides shared motion primitives: control state transitions, overlay entrances, notification exits, and continuous Pulse / Shimmer effects. Durations read theme motion tokens, respect `reduce_motion`, and request no animation frames while idle. See [Motion and Reduced Motion](docs/controls-reference.en.md#17-motion-and-reduced-motion), and run `cargo run --example motion_demo` to inspect the effects.
 
 ## Advanced and Host Modules
 
@@ -339,9 +341,13 @@ cargo run --example gen_assets   # Regenerate the demo video examples/assets/sam
   and automatically refreshes every second after creation with `cx.new(|cx| Countdown::after(Duration::from_secs(90), cx))`;
   `on_finish` is a 1-argument `Fn(&mut App)` (the timer context has no Window), fires once when the countdown reaches zero, and then stops the timer;
   the timer loop exits automatically when the entity is dropped; restarting means recreating the entity.
-- **Source semantics for ImageView**: `ImageView::new("string")` uses the GPUI asset system (Embedded) and is **not a disk path**;
-  always use `ImageView::from_file(path)` for local files. Size/layout is forwarded through `Styled` (`.w() / .h() / .flex()`, etc.),
+- **Source semantics for ImageView**: `ImageView::new("https://…")` loads a remote URI; other strings use the GPUI asset system (Embedded).
+  Neither form is a disk path, so always use `ImageView::from_file(path)` for local files. Size/layout is forwarded through `Styled` (`.w() / .h() / .flex()`, etc.),
   and loading and failure placeholders can be customized with `.loading(|| …)` / `.fallback(|| …)`.
+- **Remote image cache**: install a real `HttpClient` in the host with `cx.set_http_client(client)`, create a `RemoteImageCache`,
+  and wrap the image subtree with `remote_image_cache(cache)`. Defaults are a 20-second complete-request timeout, 2 extra retries,
+  an 8 MiB response body, 64 MiB total decoded-image/cache budget, and 128 entries; failures remain cached for 30 seconds before another request is allowed.
+  `clear(window, cx)` / `remove(&resource, window, cx)` cancel in-flight tasks and release the corresponding images.
 - **VideoPlayer is a stateful view, Windows only**: create it with `cx.new(|cx| VideoPlayer::new(cx, path))` and it starts playing automatically;
   use `.child(video.clone())` in render; control it with `video.update(cx, |v, cx| v.pause(cx))` (also `play` / `toggle` / `seek(secs)`),
   and read with `position()` / `duration()` (seconds) / `is_playing()`. Decoding runs on a background thread (MF SourceReader),

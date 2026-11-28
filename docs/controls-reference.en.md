@@ -34,7 +34,7 @@
 
 ## I. Core Concepts (Read Before Using Any Control)
 
-Understanding these 6 points will enable you to use almost every control correctly.
+Understanding these 7 points will enable you to use almost every control correctly.
 
 ### 1.1 Three State Models
 
@@ -157,6 +157,25 @@ gpui_platform::application().run(|cx: &mut App| {
 ```
 
 > Typical symptoms of forgetting `text_input::bind_keys`: the input accepts typing, but Ctrl+C/V, Select All, and arrow-key cursor movement do not work. Shortcuts are written with `secondary`, which `bind_keys` resolves to Cmd (macOS) or Ctrl (other platforms) for the host OS.
+
+### 1.7 Motion and Reduced Motion
+
+Built-in controls share the `motion` module. Button / Checkbox / Radio use 100ms state transitions, Switch uses 200ms state transitions, and MenuItem hover, Segmented selection, and Tabs indicators also use 100ms transitions. Modal / Drawer / Popover / DropdownMenu use 200ms entrances, and ToastHost / NotificationHost remove entries only after their 200ms exit completes. Spinner rotates continuously, active Skeleton placeholders breathe, and active ProgressBar shimmers; `ProgressBar::animated(false)` disables the shimmer for deterministic screenshots.
+
+- Durations read theme tokens: `motion::fast_duration()` / `mid_duration()` / `slow_duration()` map to 100ms / 200ms / 300ms.
+- `AnimatedValue` requests animation frames only while interpolating and stops driving rendering once idle. Its ID must be stable across frames and unique within the window.
+- `MotionLoop::new(id, child, LoopEffect::Pulse | LoopEffect::Shimmer)` provides continuous pulse / shimmer effects. The default period is 1200ms and can be changed with `.period(Duration)`.
+- When the host enables `reduce_motion`, state and entrance animations jump directly to their final values, notice exits complete immediately, continuous pulse stays at full opacity, shimmer stays at its origin, and no animation frames are requested.
+
+```rust
+use std::time::Duration;
+use gpui_widgets::motion::{LoopEffect, MotionLoop};
+
+let indicator = MotionLoop::new("sync-pulse", div().size_8().rounded_full(), LoopEffect::Pulse)
+    .period(Duration::from_millis(1200));
+```
+
+Runtime acceptance demo: `cargo run --example motion_demo`; append `modal` / `drawer` / `menu` / `toast` to inspect overlay entrances, the menu, and notification exit independently.
 
 ---
 
@@ -1355,7 +1374,7 @@ Avatar::new("Zhang San")
 Wraps GPUI `img`. **Controlled component** (no callbacks).
 
 - **Creation**:
-  - `ImageView::new(source)`: uses the GPUI asset system (Embedded); **not a disk path**.
+  - `ImageView::new(source)`: accepts `ImageSource`; `new("https://…")` is a remote URI, while other strings use the GPUI asset system (Embedded). Neither form is a disk path.
   - `ImageView::from_file(path)`: local file.
   - `ImageView::from_render(frame)`: in-memory frame.
 - **Properties**: `fit_cover()` / `fit_contain()` / `fit_fill()`; `rounded()`; `grayscale()`; size / layout forwarded through `Styled` (`.w()` / `.h()` / `.flex()`).
@@ -1364,6 +1383,40 @@ Wraps GPUI `img`. **Controlled component** (no callbacks).
 
 ```rust
 ImageView::from_file("d:/assets/photo.png").w(px(200.)).h(px(150.)).fit_cover().rounded()
+```
+
+### RemoteImageCache · Remote Image Cache
+
+Adds bounded LRU, in-flight request deduplication, complete-request timeout, exponential-backoff retry, and response/decoded-size limits to `ImageView` subtrees. It is not a new image widget.
+
+- **Prerequisite**: install a real `HttpClient` in the host at startup with `cx.set_http_client(client)`. GPUI defaults to `NullHttpClient`, which does not make network requests.
+- **Creation**: `cx.new(|cx| RemoteImageCache::new(cx))`, or `cx.new(|cx| RemoteImageCache::with_config(config, cx))`.
+- **Enable**: wrap the image subtree with `remote_image_cache(cache.clone()).child(ImageView::new("https://…"))`; local files and embedded resources still use GPUI's original loader.
+- **Defaults**: 20-second timeout including the body, 2 extra retries, exponential backoff from 100 ms up to 2 seconds, an 8 MiB response body, a 64 MiB per-image/total decoded-byte budget, 128 entries, and a 30-second failure TTL.
+- **Retry scope**: network/I/O errors and HTTP 408, 429, and 5xx; other 4xx responses, oversized data, and decode failures are not retried.
+- **Methods**: `len()` / `is_empty()` / `cached_bytes()` inspect the cache; `clear(window, cx)` clears it; `remove(&resource, window, cx)` removes one image. Both removal operations cancel in-flight tasks and release images.
+- **Cancellation**: dropping an entry or the cache entity cancels unfinished work; generation checks prevent stale tasks from writing into replacement entries.
+
+```rust
+use gpui_widgets::{ImageView, RemoteImageCache, RemoteImageConfig, remote_image_cache};
+use std::time::Duration;
+
+let cache = cx.new(|cx| {
+    RemoteImageCache::with_config(
+        RemoteImageConfig::default()
+            .timeout(Duration::from_secs(15))
+            .retries(3),
+        cx,
+    )
+});
+
+remote_image_cache(cache.clone()).child(
+    ImageView::new("https://example.com/photo.png")
+        .alt("Remote example image")
+        .w(px(220.))
+        .h(px(140.))
+        .fit_cover(),
+)
 ```
 
 ### VideoPlayer · Video Player

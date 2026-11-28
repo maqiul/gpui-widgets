@@ -1,6 +1,6 @@
 [package]
 name = "gpui-widgets"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "General-purpose widgets built on GPUI (Zed's GPU-accelerated UI framework)"
 license = "Apache-2.0"
@@ -38,9 +38,11 @@ path = "src/lib.rs"
 gpui = { package = "gpui-pre", version = "=0.3.14" }
 unicode-segmentation = "1.12"
 # 视频帧缓冲（RgbaImage/Frame），与 gpui 内部使用同一版本
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "rayon", "tga", "tiff", "webp"] }
 # 解码线程 -> UI 线程的异步帧通道
 flume = "0.11"
+futures = "0.3"
+usvg = { version = "0.46", default-features = false }
 
 [dev-dependencies]
 # 示例的宿主入口：gpui-pre 已把平台层拆到 gpui_platform。
@@ -181,6 +183,14 @@ doc-scrape-examples = false
 
 [[example]]
 name = "form_panel_shot"
+doc-scrape-examples = false
+
+[[example]]
+name = "remote_image_demo"
+doc-scrape-examples = false
+
+[[example]]
+name = "motion_demo"
 doc-scrape-examples = false
 
 [[example]]

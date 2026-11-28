@@ -10,8 +10,10 @@ use gpui::{
     Window, div, prelude::*, px, transparent_black,
 };
 
-use crate::a11y;
-use crate::theme::{self, Tokens, metric};
+use crate::{
+    a11y, motion,
+    theme::{self, Tokens, metric},
+};
 
 /// 圆形外观（antdv-next Radio 实测）：
 /// 未选中 `colorBgContainer` + `colorBorder`；选中主色填充/描边 + 6px 白色内点；
@@ -146,51 +148,89 @@ impl IntoElement for Radio {
     type Element = Stateful<Div>;
 
     fn into_element(self) -> Self::Element {
-        let style = theme::with(|t| radio_state(t, self.selected, self.disabled));
-        let mut circle = div()
+        let (rest, selected) = theme::with(|t| {
+            (
+                radio_state(t, false, self.disabled),
+                radio_state(t, self.selected, self.disabled),
+            )
+        });
+        let circle = div()
+            .relative()
             .flex_shrink_0()
             .flex()
             .items_center()
             .justify_center()
-            .size(px(style.size))
-            .rounded(px(style.radius))
-            .border(px(style.line_width))
-            .border_color(style.border)
-            .bg(style.bg);
-
-        if self.selected {
-            circle = circle.child(
-                div()
-                    .size(px(style.dot_size))
-                    .rounded(px(style.dot_size / 2.0))
-                    .bg(style.dot),
-            );
-        }
-
-        if !self.disabled {
-            circle = circle.hover(move |s| s.border_color(style.hover_border));
-        }
+            .size(px(rest.size))
+            .rounded(px(rest.radius))
+            .border(px(rest.line_width))
+            .border_color(rest.border)
+            .bg(rest.bg);
 
         let id = ElementId::Name(
             self.id
                 .clone()
                 .unwrap_or_else(|| format!("{}-{}", self.origin, self.label).into()),
         );
+        let motion_id = format!("radio-motion-{id:?}");
+        let hover_id = format!("radio-hover-{id:?}");
+        let selected_value = f32::from(self.selected);
+        let hover_border = if self.selected {
+            selected.hover_border
+        } else {
+            rest.hover_border
+        };
+        let circle = circle.id(ElementId::Name(format!("{hover_id:?}-surface").into()));
+        let mut circle = motion::AnimatedValue::new_with_interaction(
+            motion_id,
+            circle,
+            selected_value,
+            move |mut element, progress, interaction| {
+                let selected_border = motion::mix_color(rest.border, selected.border, progress);
+                element = element
+                    .bg(motion::mix_color(rest.bg, selected.bg, progress))
+                    .border_color(if self.disabled {
+                        selected_border
+                    } else {
+                        motion::interactive_color(
+                            selected_border,
+                            hover_border,
+                            hover_border,
+                            interaction,
+                        )
+                    });
+                if progress > 0.001 {
+                    element = element.child(
+                        div()
+                            .size(px(selected.dot_size * progress))
+                            .rounded(px(selected.dot_size * progress / 2.0))
+                            .bg(selected.dot)
+                            .opacity(progress),
+                    );
+                }
+                element
+            },
+        )
+        .duration(motion::fast_duration());
+        if !self.disabled {
+            circle = circle.hover_refresh_value(selected_value, motion::bind_hover_refresh);
+        } else {
+            circle = circle.duration(std::time::Duration::ZERO);
+        }
         let mut element = div()
             .id(id.clone())
             .flex()
             .flex_row()
             .items_center()
-            .h(px(style.line_height))
-            .gap(px(style.label_gap))
+            .h(px(rest.line_height))
+            .gap(px(rest.label_gap))
             .child(circle);
 
         if !self.label.is_empty() {
             element = element.child(
                 div()
-                    .text_size(px(style.font_size))
-                    .line_height(px(style.line_height))
-                    .text_color(style.label)
+                    .text_size(px(rest.font_size))
+                    .line_height(px(rest.line_height))
+                    .text_color(rest.label)
                     .child(self.label.clone()),
             );
         }

@@ -7,8 +7,10 @@ use gpui::{
     Window, div, prelude::*, px,
 };
 
-use crate::a11y;
-use crate::theme::{self, Tokens, metric};
+use crate::{
+    a11y, motion,
+    theme::{self, Tokens, metric},
+};
 
 /// 方框外观（antdv-next Checkbox 实测）：
 /// 未选中 `colorBgContainer` + `colorBorder`；选中主色填充 + 白色勾；
@@ -189,33 +191,76 @@ impl IntoElement for Checkbox {
             .label
             .clone()
             .unwrap_or_else(|| SharedString::from("Checkbox"));
-        let style = theme::with(|t| checkbox_state(t, checked, self.indeterminate, self.disabled));
-
-        let mut box_element = div()
+        let (rest, selected) = theme::with(|t| {
+            (
+                checkbox_state(t, false, false, self.disabled),
+                checkbox_state(t, checked, self.indeterminate, self.disabled),
+            )
+        });
+        let marked = checked || self.indeterminate;
+        let hover_border = if marked {
+            selected.hover_border
+        } else {
+            rest.hover_border
+        };
+        let box_element = div()
+            .relative()
             .flex_shrink_0()
             .flex()
             .items_center()
             .justify_center()
-            .size(px(style.size))
-            .rounded(px(style.radius))
-            .border(px(style.line_width))
-            .border_color(style.border)
-            .bg(style.bg);
+            .size(px(rest.size))
+            .rounded(px(rest.radius))
+            .border(px(rest.line_width))
+            .border_color(rest.border)
+            .bg(rest.bg);
 
-        if checked {
-            box_element = box_element.child(
-                div()
-                    .text_size(px(style.mark_glyph))
-                    .line_height(px(style.size))
-                    .text_color(style.mark)
-                    .child("✓"),
-            );
-        } else if self.indeterminate {
-            box_element = box_element.child(div().size(px(style.mark_block)).bg(style.mark));
-        }
-
+        let motion_id = format!("checkbox-motion-{id:?}");
+        let hover_id = format!("checkbox-hover-{id:?}");
+        let box_element = box_element.id(ElementId::Name(format!("{hover_id:?}-surface").into()));
+        let mut box_element = motion::AnimatedValue::new_with_interaction(
+            motion_id,
+            box_element,
+            f32::from(marked),
+            move |mut element, progress, interaction| {
+                let selected_border = motion::mix_color(rest.border, selected.border, progress);
+                element = element
+                    .bg(motion::mix_color(rest.bg, selected.bg, progress))
+                    .border_color(if self.disabled {
+                        selected_border
+                    } else {
+                        motion::interactive_color(
+                            selected_border,
+                            hover_border,
+                            hover_border,
+                            interaction,
+                        )
+                    });
+                if progress > 0.001 {
+                    let mark = if checked {
+                        div()
+                            .text_size(px(selected.mark_glyph * progress))
+                            .line_height(px(selected.size))
+                            .text_color(selected.mark)
+                            .opacity(progress)
+                            .child("✓")
+                    } else {
+                        div()
+                            .size(px(selected.mark_block * progress))
+                            .bg(selected.mark)
+                            .opacity(progress)
+                    };
+                    element = element.child(mark);
+                }
+                element
+            },
+        )
+        .duration(motion::fast_duration());
         if !self.disabled {
-            box_element = box_element.hover(move |s| s.border_color(style.hover_border));
+            box_element =
+                box_element.hover_refresh_value(f32::from(marked), motion::bind_hover_refresh);
+        } else {
+            box_element = box_element.duration(std::time::Duration::ZERO);
         }
 
         let mut element = div()
@@ -223,16 +268,16 @@ impl IntoElement for Checkbox {
             .flex()
             .flex_row()
             .items_center()
-            .h(px(style.line_height))
-            .gap(px(style.label_gap))
+            .h(px(rest.line_height))
+            .gap(px(rest.label_gap))
             .child(box_element);
 
         if let Some(label) = self.label {
             element = element.child(
                 div()
-                    .text_size(px(style.font_size))
-                    .line_height(px(style.line_height))
-                    .text_color(style.label)
+                    .text_size(px(rest.font_size))
+                    .line_height(px(rest.line_height))
+                    .text_color(rest.label)
                     .child(label),
             );
         }

@@ -143,6 +143,7 @@ pub mod display {
     pub mod misc;
     pub mod qrcode;
     pub mod rating;
+    pub mod remote_image;
     pub mod statistic;
     pub mod svg_path;
     pub mod table;
@@ -192,6 +193,7 @@ pub mod charts {
 pub(crate) use charts::chart_util;
 pub use charts::*;
 
+pub mod motion;
 pub mod theme;
 
 pub use accordion::{Accordion, AccordionItem};
@@ -225,6 +227,7 @@ pub use date_picker::{Date, DatePicker};
 pub use descriptions::Descriptions;
 pub use diff::{DiffKind, DiffLine, DiffMode, DiffStats, DiffView, diff_lines, diff_stats};
 pub use display::image::ImageView;
+pub use display::remote_image::{RemoteImageCache, RemoteImageConfig, remote_image_cache};
 pub use drawer::{Drawer, DrawerPlacement};
 pub use drop_zone::DropZone;
 pub use empty::Empty;

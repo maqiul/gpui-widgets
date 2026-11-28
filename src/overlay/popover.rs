@@ -10,6 +10,7 @@ use gpui::{
 };
 
 use crate::a11y::{self, Semantics};
+use crate::motion;
 use crate::popup::anchored;
 use crate::theme::{self, Tokens, metric};
 
@@ -156,8 +157,13 @@ impl IntoElement for Popover {
                 None => shell.w_full(),
             };
             shell = Semantics::new(Role::Dialog, "气泡内容")
-                .id(shell_id)
+                .id(shell_id.clone())
                 .apply(shell);
+            let shell = motion::enter(
+                format!("popover-enter-{shell_id}"),
+                shell,
+                |shell, progress| shell.opacity(progress).mt(px(-(1.0 - progress) * 4.0)),
+            );
             popup = Some(div().child(shell));
         }
 

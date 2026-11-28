@@ -34,7 +34,7 @@
 
 ## 一、核心概念（用任何控件前必读）
 
-理解下面 6 点，几乎所有控件都能正确使用。
+理解下面 7 点，几乎所有控件都能正确使用。
 
 ### 1.1 三种状态模型
 
@@ -157,6 +157,25 @@ gpui_platform::application().run(|cx: &mut App| {
 ```
 
 > 忘记 `text_input::bind_keys` 的典型症状：输入框能打字，但 Ctrl+C/V、全选、方向键移动光标全部无效。快捷键用 `secondary` 书写，由 `bind_keys` 按宿主 OS 解析为 Cmd（macOS）或 Ctrl（其余平台）。
+
+### 1.7 动效与减少动态效果
+
+内置控件共享 `motion` 模块：Button / Checkbox / Radio 使用 100ms 状态过渡，Switch 使用 200ms 状态过渡，MenuItem 悬停、Segmented 选中与 Tabs 指示条也使用 100ms 过渡；Modal / Drawer / Popover / DropdownMenu 使用 200ms 进入，ToastHost / NotificationHost 在 200ms 退场结束后才移除条目。Spinner 持续旋转，Skeleton active 时呼吸，ProgressBar active 时流光；`ProgressBar::animated(false)` 可关闭流光以生成确定性截图。
+
+- 时长读取主题 token：`motion::fast_duration()` / `mid_duration()` / `slow_duration()` 对应 100ms / 200ms / 300ms。
+- `AnimatedValue` 仅在插值期间请求动画帧，静止后不驱动渲染；id 必须跨帧稳定且同窗口唯一。
+- `MotionLoop::new(id, child, LoopEffect::Pulse | LoopEffect::Shimmer)` 提供持续脉冲 / 流光，默认周期 1200ms，可用 `.period(Duration)` 调整。
+- 宿主开启 `reduce_motion` 后，状态与进入动画直接落到终态，通知退场立即完成；持续脉冲固定为完整不透明度，流光停在起点，且不再请求动画帧。
+
+```rust
+use std::time::Duration;
+use gpui_widgets::motion::{LoopEffect, MotionLoop};
+
+let indicator = MotionLoop::new("sync-pulse", div().size_8().rounded_full(), LoopEffect::Pulse)
+    .period(Duration::from_millis(1200));
+```
+
+运行时验收示例：`cargo run --example motion_demo`；附加 `modal` / `drawer` / `menu` / `toast` 可分别检查浮层进入、菜单与通知退出。
 
 ---
 
@@ -1350,7 +1369,7 @@ Avatar::new("张三")
 封装 gpui `img`。**受控组件**（无回调）。
 
 - **创建**：
-  - `ImageView::new(source)`：走 GPUI 资产系统（Embedded），**不是磁盘路径**。
+  - `ImageView::new(source)`：支持 `ImageSource`；`new("https://…")` 为远程 URI，普通字符串走 GPUI 资产系统（Embedded），**都不是磁盘路径**。
   - `ImageView::from_file(path)`：本地文件。
   - `ImageView::from_render(frame)`：内存帧。
 - **属性**：`fit_cover()` / `fit_contain()` / `fit_fill()`；`rounded()`；`grayscale()`；尺寸 / 布局通过 `Styled` 转发（`.w()` / `.h()` / `.flex()`）。
@@ -1359,6 +1378,40 @@ Avatar::new("张三")
 
 ```rust
 ImageView::from_file("d:/assets/photo.png").w(px(200.)).h(px(150.)).fit_cover().rounded()
+```
+
+### RemoteImageCache · 远程图片缓存
+
+为 `ImageView` 子树提供有界 LRU、在途请求去重、完整请求超时、指数退避重试和响应/解码大小限制；不是新图片控件。
+
+- **前提**：宿主应用启动时通过 `cx.set_http_client(client)` 安装真实 `HttpClient`。GPUI 默认 `NullHttpClient` 不会发出网络请求。
+- **创建**：`cx.new(|cx| RemoteImageCache::new(cx))`，或 `cx.new(|cx| RemoteImageCache::with_config(config, cx))`。
+- **启用**：用 `remote_image_cache(cache.clone()).child(ImageView::new("https://…"))` 包住图片子树；本地文件与内嵌资源仍委托 GPUI 原加载路径。
+- **默认策略**：20 秒超时（含响应体）、额外重试 2 次、100 ms 起步且最高 2 秒的指数退避、8 MiB 响应体、64 MiB 单图/缓存解码字节、128 条目、失败缓存 30 秒。
+- **重试范围**：网络/I/O 错误及 HTTP 408、429、5xx；4xx（除 408/429）、超大响应和解码失败不重试。
+- **方法**：`len()` / `is_empty()` / `cached_bytes()` 观察缓存；`clear(window, cx)` 清空；`remove(&resource, window, cx)` 移除单张。清空/移除会取消在途任务并释放图像。
+- **取消**：删除缓存条目或释放缓存实体时，未完成任务被丢弃；旧任务的 generation 校验阻止其回写新条目。
+
+```rust
+use gpui_widgets::{ImageView, RemoteImageCache, RemoteImageConfig, remote_image_cache};
+use std::time::Duration;
+
+let cache = cx.new(|cx| {
+    RemoteImageCache::with_config(
+        RemoteImageConfig::default()
+            .timeout(Duration::from_secs(15))
+            .retries(3),
+        cx,
+    )
+});
+
+remote_image_cache(cache.clone()).child(
+    ImageView::new("https://example.com/photo.png")
+        .alt("示例远程图片")
+        .w(px(220.))
+        .h(px(140.))
+        .fit_cover(),
+)
 ```
 
 ### VideoPlayer · 视频播放器

@@ -185,6 +185,7 @@ impl RenderOnce for ContextMenu {
                 popup_bounds.clone(),
                 &menu_focus,
                 None,
+                window,
                 cx,
             );
             let menu = menu.on_mouse_down_out({

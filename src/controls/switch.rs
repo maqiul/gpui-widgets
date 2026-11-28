@@ -7,9 +7,10 @@ use gpui::{
     Toggled, Window, div, prelude::*, px,
 };
 
-use crate::Spinner;
-use crate::a11y;
-use crate::theme::{self, Tokens, metric};
+use crate::{
+    Spinner, a11y, motion,
+    theme::{self, Tokens, metric},
+};
 
 /// 轨道 / 滑块外观（antdv-next Switch 实测）：
 /// 未选中轨道 `colorTextQuaternary`、悬停 `colorTextTertiary`；选中轨道主色、
@@ -190,26 +191,23 @@ impl IntoElement for Switch {
 
     fn into_element(self) -> Self::Element {
         let on = self.on;
+        let small = self.small;
+        let loading = self.loading;
         let style = theme::with(|t| switch_state(t, self.small, on, self.disabled, self.loading));
+        let (off_bg, on_bg) = if self.disabled || self.loading {
+            (style.bg, style.bg)
+        } else {
+            theme::with(|t| (t.color_text_quaternary, t.color_primary))
+        };
 
-        let mut knob = div()
-            .flex_shrink_0()
-            .size(px(style.handle_size))
-            .rounded(px(style.handle_size / 2.0))
-            .bg(style.handle_bg)
-            .shadow(metric::switch_handle_shadow(style.opacity, self.small));
-        if self.loading {
-            knob = knob.flex().items_center().justify_center().child(
-                Spinner::new()
-                    .size(px(style.handle_size - 4.0))
-                    .color(style.accent),
-            );
-        }
-
+        let travel = (style.track_width - style.handle_size - style.padding * 2.0).max(0.0);
+        let interactive = !self.disabled && !self.loading;
         let mut track = div()
+            .relative()
             .flex()
             .flex_row()
             .items_center()
+            .w(px(style.track_width))
             .h(px(style.track_height))
             .rounded(px(style.radius))
             .text_size(px(style.font_size))
@@ -217,35 +215,21 @@ impl IntoElement for Switch {
             .bg(style.bg);
 
         if let Some((on_text, off_text)) = self.text {
-            track = track
-                .min_w(px(style.track_width))
-                .justify_between()
-                .pl(px(if on {
-                    style.text_padding_near
-                } else {
-                    style.padding
-                }))
-                .pr(px(if on {
-                    style.padding
-                } else {
-                    style.text_padding_near
-                }));
-            let label = div().text_color(if on { style.on_text } else { style.off_text });
-            track = if on {
-                track.child(label.child(on_text)).child(knob)
-            } else {
-                track.child(knob).child(label.child(off_text))
-            };
-        } else {
-            track = track
-                .w(px(style.track_width))
-                .p(px(style.padding))
-                .when(on, |track| track.justify_end())
-                .child(knob);
-        }
-
-        if !self.disabled && !self.loading {
-            track = track.hover(move |s| s.bg(style.hover_bg));
+            let label = if on { on_text } else { off_text };
+            let label_color = if on { style.on_text } else { style.off_text };
+            track = track.child(
+                div()
+                    .absolute()
+                    .left(px(style.text_padding_near))
+                    .right(px(style.text_padding_near))
+                    .top_0()
+                    .bottom_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_color(label_color)
+                    .child(label),
+            );
         }
 
         let id = ElementId::Name(self.id.clone().unwrap_or_else(|| {
@@ -256,6 +240,45 @@ impl IntoElement for Switch {
             )
             .into()
         }));
+        let motion_id = format!("switch-motion-{id:?}");
+        let track = track.id(ElementId::Name(format!("{id:?}-track").into()));
+        let mut track = motion::AnimatedValue::new_with_interaction(
+            motion_id,
+            track,
+            f32::from(on),
+            move |mut element, progress, interaction| {
+                let current_bg = motion::mix_color(off_bg, on_bg, progress);
+                element = element.bg(motion::interactive_color(
+                    current_bg,
+                    style.hover_bg,
+                    style.hover_bg,
+                    interaction,
+                ));
+                let mut knob = div()
+                    .absolute()
+                    .top(px((style.track_height - style.handle_size) / 2.0))
+                    .left(px(style.padding + travel * progress))
+                    .flex_shrink_0()
+                    .size(px(style.handle_size))
+                    .rounded(px(style.handle_size / 2.0))
+                    .bg(style.handle_bg)
+                    .shadow(metric::switch_handle_shadow(style.opacity, small));
+                if loading {
+                    knob = knob.flex().items_center().justify_center().child(
+                        Spinner::new()
+                            .size(px(style.handle_size - 4.0))
+                            .color(style.accent),
+                    );
+                }
+                element.child(knob)
+            },
+        )
+        .duration(motion::mid_duration());
+        if interactive {
+            track = track.hover_refresh_value(f32::from(on), motion::bind_hover_refresh);
+        } else {
+            track = track.duration(std::time::Duration::ZERO);
+        }
         let aria_label = self
             .label
             .clone()

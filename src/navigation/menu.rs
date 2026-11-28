@@ -15,6 +15,7 @@ use gpui::{
 };
 
 use crate::a11y;
+use crate::motion;
 use crate::popup::{PopupBoundsSink, PopupPlacement, anchored, anchored_with_placement_and_bounds};
 use crate::theme::{self, Tokens, metric};
 
@@ -96,7 +97,7 @@ pub(crate) fn menu_container(id: ElementId) -> Stateful<Div> {
     let semantics_id = format!("{id:?}-menu");
     a11y::Semantics::new(Role::Menu, "操作菜单")
         .id(semantics_id.clone())
-        .apply(div().id(id).accessibility_id(semantics_id))
+        .apply(div().id(id.clone()).accessibility_id(semantics_id))
         .occlude()
         .flex()
         .flex_col()
@@ -115,11 +116,31 @@ fn menu_divider_with_id(id: ElementId) -> Stateful<Div> {
         .bg(style.color)
 }
 
+fn menu_hover_overlay(
+    id: &ElementId,
+    style: MenuItemStyle,
+    state: Rc<motion::InteractionState>,
+) -> impl IntoElement {
+    motion::AnimatedValue::new(
+        format!("menu-item-hover-{id:?}"),
+        div()
+            .absolute()
+            .inset_0()
+            .rounded(px(style.radius))
+            .bg(style.hover_bg),
+        0.0,
+        |overlay, progress| overlay.opacity(progress),
+    )
+    .target_shared(state)
+    .duration(motion::fast_duration())
+}
+
 fn menu_item_row_at(
     id: ElementId,
     item: &MenuItem,
     close: Rc<dyn Fn(&mut Window, &mut App)>,
     set_position: Option<(usize, usize)>,
+    hover: Rc<motion::InteractionState>,
 ) -> Stateful<Div> {
     let style = theme::with(|t| item_state(t, item.danger, item.disabled));
     let semantics_id = format!("{id:?}-menu-item");
@@ -131,7 +152,8 @@ fn menu_item_row_at(
         semantics = semantics.position(position, size);
     }
     let mut row = semantics
-        .apply(div().id(id).accessibility_id(semantics_id))
+        .apply(div().id(id.clone()).accessibility_id(semantics_id))
+        .relative()
         .flex()
         .items_center()
         .min_h(px(style.height))
@@ -141,16 +163,16 @@ fn menu_item_row_at(
         .text_size(px(style.font_size))
         .line_height(px(style.line_height))
         .text_color(style.fg)
-        .bg(style.bg)
-        .child(item.label.clone());
+        .bg(style.bg);
     if item.disabled {
-        row = row.cursor(CursorStyle::Arrow);
+        row = row.cursor(CursorStyle::Arrow).child(item.label.clone());
     } else {
-        let hover_bg = style.hover_bg;
         let on_click = item.on_click.clone();
         row = row
             .cursor(CursorStyle::PointingHand)
-            .hover(move |style| style.bg(hover_bg));
+            .child(menu_hover_overlay(&id, style, hover.clone()))
+            .child(item.label.clone());
+        row = motion::bind_hover_refresh(row, hover);
         row = a11y::click_void(row, move |window, cx| {
             if let Some(on_click) = &on_click {
                 on_click(window, cx);
@@ -303,6 +325,7 @@ fn menu_submenu_row(
     set_open_submenu: SetOpenSubmenu,
     path: SharedString,
     set_position: Option<(usize, usize)>,
+    hover: Rc<motion::InteractionState>,
 ) -> Stateful<Div> {
     let style = theme::with(|t| item_state(t, item.danger, item.disabled));
     let semantics_id = format!("{id:?}-menu-item");
@@ -316,7 +339,8 @@ fn menu_submenu_row(
     }
     let arrow_color = theme::with(|t| t.color_text_secondary);
     let mut row = semantics
-        .apply(div().id(id).accessibility_id(semantics_id))
+        .apply(div().id(id.clone()).accessibility_id(semantics_id))
+        .relative()
         .flex()
         .items_center()
         .min_h(px(style.height))
@@ -326,32 +350,39 @@ fn menu_submenu_row(
         .text_size(px(style.font_size))
         .line_height(px(style.line_height))
         .text_color(style.fg)
-        .bg(style.bg)
-        .child(item.label.clone())
-        .child(
-            div()
-                .ml_auto()
-                .pl(px(style.padding_inline))
-                .text_color(arrow_color)
-                .child("›"),
-        );
+        .bg(style.bg);
     if item.disabled {
-        row = row.cursor(CursorStyle::Arrow);
+        row.cursor(CursorStyle::Arrow)
+            .child(item.label.clone())
+            .child(
+                div()
+                    .ml_auto()
+                    .pl(px(style.padding_inline))
+                    .text_color(arrow_color)
+                    .child("›"),
+            )
     } else {
-        let hover_bg = style.hover_bg;
         let hover_open = set_open_submenu.clone();
         let hover_path = path.clone();
         row = row
             .cursor(CursorStyle::PointingHand)
-            .hover(move |style| style.bg(hover_bg));
-        row = row.on_mouse_move(move |_, window, cx| {
-            hover_open(Some(hover_path.clone()), window, cx);
-        });
+            .on_mouse_move(move |_, window, cx| {
+                hover_open(Some(hover_path.clone()), window, cx);
+            });
         row = a11y::click_void(row, move |window, cx| {
             set_open_submenu(Some(path.clone()), window, cx);
         });
+        row = row.child(menu_hover_overlay(&id, style, hover.clone()));
+        motion::bind_hover_refresh(row, hover)
+            .child(item.label.clone())
+            .child(
+                div()
+                    .ml_auto()
+                    .pl(px(style.padding_inline))
+                    .text_color(arrow_color)
+                    .child("›"),
+            )
     }
-    row
 }
 
 fn submenu_is_open(open_submenu: Option<&SharedString>, item_path: &str) -> bool {
@@ -390,6 +421,7 @@ pub(crate) fn render_menu_rows(
     popup_bounds: PopupBoundsSink,
     focus_map: &MenuFocusMap,
     parent_handle: Option<FocusHandle>,
+    window: &mut Window,
     cx: &mut App,
 ) -> Stateful<Div> {
     let mut menu = menu_container(ElementId::Name(format!("{id:?}-menu").into())).w(width);
@@ -424,15 +456,22 @@ pub(crate) fn render_menu_rows(
             .iter()
             .position(|(_, path)| path.as_ref() == item_path.as_str());
         let row_handle = focus_index.map(|index| focus_targets[index].clone());
+        let row_id = ElementId::Name(format!("{id:?}-item-{ix}").into());
+        let hover = motion::keyed_interaction_state(
+            window,
+            cx,
+            ElementId::Name(format!("{row_id:?}-hover-state").into()),
+        );
         if let Some(subitems) = &item.submenu {
             let open = submenu_is_open(open_submenu, &item_path);
             let mut row = menu_submenu_row(
-                ElementId::Name(format!("{id:?}-item-{ix}").into()),
+                row_id,
                 item,
                 open,
                 set_open_submenu.clone(),
                 item_path.clone().into(),
                 Some((item_position, item_count)),
+                hover,
             );
             if let Some(handle) = &row_handle {
                 row = row.track_focus(handle);
@@ -449,6 +488,7 @@ pub(crate) fn render_menu_rows(
                     popup_bounds.clone(),
                     focus_map,
                     row_handle.clone(),
+                    window,
                     cx,
                 );
                 let gap = px(theme::with(|t| t.padding_xxs));
@@ -464,10 +504,11 @@ pub(crate) fn render_menu_rows(
             ));
         } else {
             let mut row = menu_item_row_at(
-                ElementId::Name(format!("{id:?}-item-{ix}").into()),
+                row_id,
                 item,
                 close.clone(),
                 Some((item_position, item_count)),
+                hover,
             );
             if let Some(handle) = &row_handle {
                 row = row.track_focus(handle);
@@ -712,7 +753,7 @@ impl RenderOnce for DropdownMenu {
                 })
             };
             let menu = render_menu_rows(
-                self.id,
+                self.id.clone(),
                 &self.items,
                 self.width,
                 close,
@@ -722,6 +763,7 @@ impl RenderOnce for DropdownMenu {
                 popup_bounds.clone(),
                 &menu_focus,
                 None,
+                window,
                 cx,
             );
             let menu = menu.on_mouse_down_out({
@@ -739,6 +781,11 @@ impl RenderOnce for DropdownMenu {
                     }
                 }
             });
+            let menu = motion::enter(
+                format!("{:?}-menu-enter", self.id),
+                menu,
+                |menu, progress| menu.opacity(progress).mt(px(-(1.0 - progress) * 4.0)),
+            );
             popup = Some(div().child(menu));
         }
 
