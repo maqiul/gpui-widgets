@@ -53,13 +53,13 @@
 |---|---|
 | `Anchor` | 锚点导航：`AnchorItem` 嵌套目录，左侧指示轨 + 当前高亮，`active()` 受控 + `on_click(&SharedString)`；滚动定位由调用方处理 |
 | `Breadcrumb` | 面包屑导航：末项为当前页不可点，`on_click(&usize)` 回调中间层级 |
-| `DropdownMenu` | 动作菜单：任意触发元素 + `MenuItem` 列表（支持分隔线 / `danger()` / `disabled()`），点动作后收起 |
-| `MenuBar` | 应用菜单栏：顶层菜单受控展开 / 选中，悬停切换，复用 `MenuItem` 多级子菜单，方向键 / Home / End / Esc |
+| `DropdownMenu` | 动作菜单：任意触发元素 + `MenuItem` 列表（支持分隔线 / `danger()` / `disabled()`），触发器与菜单项支持方向键 / Home / End / Esc，点动作后收起 |
+| `MenuBar` | 应用菜单栏：顶层菜单受控展开 / 选中，悬停切换，复用 `MenuItem` 多级子菜单；顶层与下拉/子菜单均支持方向键 / Home / End / Esc |
 | `NavMenu` | 导航菜单：`MenuEntry` 嵌套子菜单，图标 / 禁用，选中与展开集合受控，`on_select()` / `on_toggle()` |
 | `Pagination` | 分页器：页码从 1 起，页数多时自动省略号折叠，边界按钮置灰，`simple()` 简洁模式，`small()` 小尺寸 |
 | `Steps` | 步骤条：完成 ✓ / 当前数字 / 待办灰，`current()` 受控，`vertical()` 纵向，`small()` 小尺寸，`progress_dot()` 点状，`descriptions()` 步骤描述 |
 | `Tabs` | 页签：下划线指示器，`on_select(&usize)`；`disabled_tabs()` 禁用页签，`closable()` + `on_close(&usize)` 可关闭，`card()` 卡片式，`centered()` 居中 |
-| `ContextMenu` | 右键菜单包装器：包裹任意内容，右键在光标处弹出 `MenuItem` 菜单（视口内夹取），需唯一 id |
+| `ContextMenu` | 右键菜单包装器：包裹任意内容，右键在光标处弹出 `MenuItem` 菜单（视口内夹取），菜单项支持方向键 / Home / End / Esc，需唯一 id |
 | `FloatButton` | 悬浮按钮：absolute 圆形按钮固定容器右下角，`bottom()` / `right()` / `tooltip()`，父容器须 `relative()` |
 | `CommandPalette` | 命令面板：Ctrl+K 唤起的搜索式命令选择器（遮罩 + 居中面板），`PaletteItem` 可带快捷键提示，本身是 `Entity` |
 
@@ -101,10 +101,10 @@
 
 | 控件 | 说明 |
 |---|---|
-| `Table` | 数据表格：`column_widths()` 列宽（默认均分），`striped()` 斑马纹，行选中受控 + `on_row_click()`；`sortable()` + `sort()` + `on_sort()` 表头排序，`selectable()` + `selected_rows()` + `on_selected_rows()` 多选，空数据自动显示空态；`pagination(page, page_size)` + `on_page_change()` 内置分页（回调仍用全局下标，全选仅当前页），`row_detail()` + `expanded_rows()` + `on_expand()` 展开行，`fixed_left()` / `fixed_right_columns(n)` 固定左右列 + 横向滚动（与展开行互斥），`resizable_columns(true)` 表头拖拽/键盘调宽，`filterable()` + `filter()` + `on_filter_change()` 筛选，`editable_columns()` + `editing()` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()` 受控单元格编辑，`bordered()` 全边框，`show_header(bool)` 表头显隐 |
-| `TreeTable` | 树形表格：`TreeTableNode` 行内多列 + 层级节点，展开 / 选中 / 勾选集合受控且回调使用稳定节点 id；父子级联勾选与半选态，方向键 / Home / End / 左右键 / Enter / Space 键盘操作，固定行高 `virtualized(height)` 虚拟滚动 |
+| `Table` | 数据表格：`column_widths()` 列宽（默认均分），`striped()` 斑马纹，行选中受控 + `on_row_click()`，↑ / ↓ / Home / End 行导航（虚拟模式自动滚入视野）；`sortable()` + `sort()` + `on_sort()` 表头排序，`selectable()` + `selected_rows()` + `on_selected_rows()` 多选，空数据自动显示空态；`pagination(page, page_size)` + `on_page_change()` 内置分页（回调仍用全局下标，全选仅当前页），`row_detail()` + `expanded_rows()` + `on_expand()` 展开行，`fixed_left()` / `fixed_right_columns(n)` 固定左右列 + 横向滚动（与展开行互斥），`resizable_columns(true)` 表头拖拽/键盘调宽，`filterable()` + `filter()` + `on_filter_change()` 筛选，`editable_columns()` + `editing()` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()` 受控单元格编辑，`bordered()` 全边框，`show_header(bool)` 表头显隐 |
+| `TreeTable` | 树形表格：`TreeTableNode` 行内多列 + 层级节点，展开 / 选中 / 勾选集合受控且回调使用稳定节点 id；父子级联勾选与半选态，方向键 / Home / End / 左右键 / Enter / Space 键盘操作，固定行高 `virtualized(height)` 虚拟滚动与选中行自动跟焦 |
 | `Tree` | 树形控件：`TreeNode` 嵌套（`Clone`），展开集合 / 选中 id 受控，`on_toggle()` / `on_select()`；`checkable()` + `checked()` + `on_check()` 勾选父子联动，`draggable()` + `on_drop_node(&TreeDrop)` 拖拽移动（重组由调用方用 `take_node()` / `find_node_mut()` / `push_child()` 完成） |
-| `List` | 列表：`ListItem` 标题 / 描述 / 头像 / `extra()` 右侧元素，`header()` / `footer()` |
+| `List` | 列表：`ListItem` 标题 / 描述 / 头像 / `extra()` 右侧元素，`header()` / `footer()`；`selected()` + `on_select()` 受控选中，点击与 ↑ / ↓ / Home / End 导航，虚拟模式自动滚入视野 |
 | `Card` | 卡片：标题 + `extra()` 右上操作 + `cover()` 封面 + `action()` 底部操作区，`bordered()`，`hoverable()` 悬停浮起阴影 |
 | `Descriptions` | 描述列表：`item(label, value)` 键值对，`column()` 每行列数，`bordered()` 表格样式，`vertical()` 垂直布局（标签上值下） |
 | `Statistic` | 统计数值：标题 + 大数字 + `prefix()` / `suffix()` + `trend()` 涨跌箭头 |
@@ -149,7 +149,7 @@
 | `ToastHost` | 自管轻提示：默认 3s / 4.5s / 6s 到期，悬停暂停，稳定 key，`max_count` 丢最旧，单 ticker；`Duration::ZERO` 常驻 |
 | `NotificationStack` | 通知堆栈：右上角浮层，`NotificationItem` 标题 / 描述 / 类型 / `action()` 按钮，稳定 key + `on_dismiss`，条目受控 |
 | `NotificationHost` | 自管通知：默认 4.5s 到期，悬停暂停，稳定 key，`max_count` 丢最旧，单 ticker；`Duration::ZERO` 常驻 |
-| `NotificationCenter` | 通知中心：右侧覆盖面板，历史虚拟列表、未读计数、选中 / 已读 / 删除 / 全部已读，方向键与 Home / End 导航 |
+| `NotificationCenter` | 通知中心：右侧覆盖面板，历史虚拟列表、未读计数、选中 / 已读 / 删除 / 全部已读，方向键与 Home / End 导航并自动滚入视野 |
 | `Popconfirm` | 气泡确认框：包裹触发元素，`description()` / `ok_text()` / `cancel_text()`，`on_confirm()` / `on_cancel()` |
 | `ProgressBar` | 进度条（0.0 ~ 1.0），`steps(n)` 分段进度 |
 | `RingProgress` | 环形进度：自绘圆弧轨道 + 进度弧，`size()` / `thickness()` / `color()` / `label()` 中心文字 |
@@ -316,7 +316,8 @@ cargo run --example gen_assets   # 重新生成演示视频 examples/assets/samp
   不传时默认显示选中值所在月（无值则当前月）；不接 `on_month_change` 时月导航不生效。
   DateRangePicker 同约定（月份默认取起点所在月）；待选起点按 id 跨帧持久化，收起 / 清空时自动丢弃。
 - **Table 分页与固定列**：分页受控（页码从 1 起），排序 / 选中 / 展开等回调一律用**全局行下标**，
-  表头全选只作用当前页；`fixed_left()` / `fixed_right_columns(n)` 要求统一行高（37px），未指定列宽的列默认 120px，
+  表头全选只作用当前页；表格或行聚焦后可用 ↑ / ↓ / Home / End 导航，虚拟模式会把目标行滚入视野。
+  `fixed_left()` / `fixed_right_columns(n)` 要求统一行高（37px），未指定列宽的列默认 120px，
   与 `row_detail()` 同时设置时展开行不生效。`filterable()` 在分页前筛选，`resizable_columns(true)` 需接
   `on_column_resize()` 回写列宽；`editable_columns()` + `editing()` 受控，双击或聚焦单元格后按 Enter/Space 编辑，
   Enter 或失焦提交。

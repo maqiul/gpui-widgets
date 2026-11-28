@@ -476,6 +476,7 @@ Breadcrumb::new(["首页", "产品", "详情"])
 - **MenuItem 属性**：分隔线、`danger()` 危险项、`disabled()` 禁用项、`submenu(label, items)` 多级子菜单。
 - **MenuItem 回调**：`on_click(&mut Window, &mut App)`（**2 参**）；子菜单父项自身不注册动作回调。
 - **行为**：鼠标移入或点击子菜单父项向右展开，支持递归多级与窗口右缘自动左翻；点动作后自动收起；浮层定位见 [1.4](#14-浮层定位机制共享约定)。
+- **键盘 / a11y**：触发器聚焦后按 ↓ / ↑ 打开并聚焦首项 / 末项；菜单内 ↑ / ↓ 移动，Home / End 跳首尾，→ / Enter / Space 展开子菜单，← 返回父项，Esc 关闭；禁用项与分隔线自动跳过。
 
 ```rust
 let entity = cx.entity();
@@ -500,7 +501,7 @@ DropdownMenu::new("more", Button::new("更多"), vec![
 - **MenuBar 属性**：`open(Option<usize>)` 控制展开顶层项，`selected(Option<usize>)` 控制选中项，`menu_width(px)` 设置下拉宽度。
 - **回调**：`on_open_change(&Option<usize>, &mut Window, &mut App)`；`on_select(usize, &SharedString, &mut Window, &mut App)` 回传顶层下标与动作 label。
 - **行为**：点击顶层项展开；已有菜单打开时，悬停另一个顶层项直接切换；点击外部或动作项后收起；子菜单沿右侧弹出并在窗口右缘自动左翻。
-- **键盘 / a11y**：`Role::MenuBar` + 顶层 `Role::Button`，暴露 expanded / selected；Left / Right 循环移动，Home / End 跳转，打开时同步切换菜单，Esc 收起。
+- **键盘 / a11y**：`Role::MenuBar` + 顶层 `Role::Button`，暴露 expanded / selected；顶层 Left / Right 循环移动，Home / End 跳转，↓ / ↑ 打开菜单并聚焦首项 / 末项；下拉与子菜单内 ↑ / ↓ 移动，Home / End 跳首尾，→ / Enter / Space 展开子菜单，← 返回父项，Esc 收起。
 - **注意**：`open` 与 `selected` 必须在回调里回写；子菜单父项自身没有动作回调，动作发生在叶子项。
 
 ```rust
@@ -586,6 +587,7 @@ Tabs::new(["概览", "明细", "设置"], self.tab)
 - **创建**：`ContextMenu::new(id: impl Into<ElementId>, items)`，再 `.child(任意内容)`。
 - **行为**：右键在光标处弹出 `MenuItem` 菜单（视口内夹取，不超出窗口）；同样支持 `MenuItem::submenu(...)` 多级子菜单。
 - **MenuItem 回调**：`on_click`（2 参）。
+- **键盘**：菜单内 ↑ / ↓ 移动，Home / End 跳首尾，→ / Enter / Space 展开子菜单，← 返回父项，Esc 关闭；禁用项与分隔线自动跳过。
 
 ```rust
 ContextMenu::new("ctx", vec![MenuItem::new("复制"), MenuItem::new("粘贴")])
@@ -1052,7 +1054,7 @@ FormItem::new("姓名").required()
 - **属性**：
   - `column_widths(vec)`：列宽（默认均分）。
   - `striped()`：斑马纹；`bordered()`：全边框；`show_header(bool)`：表头显隐。
-  - 行选中受控 + `on_row_click()`。
+  - 行选中受控 + `on_row_click()`；表格或行聚焦后支持 ↑ / ↓ / Home / End 行导航，虚拟模式自动把目标行滚入视野。
   - `sortable()` + `sort(col, asc)` + `on_sort()`：表头排序。
   - `selectable()` + `selected_rows(vec)` + `on_selected_rows()`：多选。
   - `pagination(page, page_size)` + `on_page_change()`：内置分页。
@@ -1136,7 +1138,7 @@ Tree::new("org", nodes)
   - `column_widths(Vec<Pixels>)`、`striped()`、`bordered()`、`show_header(bool)`。
   - `virtualized(height)`：固定行高 + `uniform_list` 虚拟滚动；`virtual_scroll_handle(handle)` 可复用外部滚动句柄。
 - **回调**（均 3 参）：`on_toggle(&SharedString)`、`on_select(&SharedString)`、`on_check(&Vec<SharedString>)`。
-- **键盘**：表格聚焦后 ↑ / ↓ 移动，Home / End 跳首尾；← 收起当前节点或移动到父节点；→ 展开当前节点或移动到首个子节点；Enter 选中；启用勾选时 Space 切换当前节点勾选。
+- **键盘**：表格聚焦后 ↑ / ↓ 移动，Home / End 跳首尾；← 收起当前节点或移动到父节点；→ 展开当前节点或移动到首个子节点；Enter 选中；启用勾选时 Space 切换当前节点勾选。虚拟模式下选中行变化会自动滚入视野。
 - **纯函数 helper**：`tree_table_visible_ids()`、`tree_table_toggle_expanded()`、`tree_table_navigation_target()`、`tree_table_check_state()`、`tree_table_cascade_check()`，可直接用于宿主状态管理或矩阵测试。
 - **a11y**：容器 `Role::Table`；表头 `Role::ColumnHeader`；行与单元格使用表格语义；展开箭头 `Role::Button` + expanded，勾选框 `Role::CheckBox` + mixed。
 - **性能**：展开时按深度优先顺序展平；虚拟模式只实体化视口内可见行。行高固定，因此单元格文本单行省略。
@@ -1165,15 +1167,21 @@ TreeTable::new("files-table", ["名称", "大小", "状态"], self.nodes.clone()
 
 ### List · 列表
 
-垂直列表。**受控组件**（无回调）。
+垂直列表。选择与回调受控；未配置 `on_select()` 时保持纯展示。
 
 - **创建**：`ListItem::new(title)`（可设描述 / 头像 / `extra()` 右侧元素）；`List::new(items)`。
-- **虚拟滚动**：`List::virtualized(px(视口高), px(行高), count, |ix| ListItem)` + `virtual_scroll_handle(handle)`，只挂载可见行；行由工厂按需构造，header / footer 固定在视口外。
+- **选择**：`selected(Option<usize>)` + `on_select(&usize, &mut Window, &mut App)`；点击行或聚焦列表后按 ↑ / ↓ / Home / End 改变选中项。
+- **虚拟滚动**：`List::virtualized(px(视口高), px(行高), count, |ix| ListItem)` + `virtual_scroll_handle(handle)`，只挂载可见行；行由工厂按需构造，header / footer 固定在视口外；键盘选中时自动滚入视野。
 - **属性**：`header(el)` / `footer(el)`。
 
 ```rust
 List::virtualized(px(520.), px(56.), 10_000, |ix|
     ListItem::new(format!("会话 {ix:05}")).description("host-000.internal"))
+    .selected(self.selected)
+    .on_select(cx.listener(|this, ix, _, cx| {
+        this.selected = Some(*ix);
+        cx.notify();
+    }))
     .header(Text::new("会话列表").strong())
 ```
 
@@ -1655,7 +1663,7 @@ if self.modal_open {
 - **属性**：`open(bool)`、`selected(Option<usize>)`、`title(text)`、`empty_text(text)`；空集合时显示空状态。
 - **条目能力**：复用 `NotificationItem`，新增 `.read(bool)`、`.set_read(bool)`、`.timestamp(text)`；读取用 `is_read()`、`timestamp_text()`、`description_text()`、`title()`、`variant()`。
 - **回调**：`on_select(&usize, &mut Window, &mut App)`、`on_read(&usize, &mut Window, &mut App)`、`on_remove(&usize, &mut Window, &mut App)`、`on_mark_all_read(&mut Window, &mut App)`、`on_dismiss(&mut Window, &mut App)`。后两者无事件参数，不能直接使用 `cx.listener`，应在闭包里用 `cx.entity()` 句柄更新父视图。
-- **交互**：点击条目触发选择，未读条目同时触发 `on_read`；✕ 删除；表头可全部已读或关闭；↑ / ↓ 循环移动，Home / End 跳到首尾，Esc 关闭。
+- **交互**：点击条目触发选择，未读条目同时触发 `on_read`；✕ 删除；表头可全部已读或关闭；↑ / ↓ 循环移动，Home / End 跳到首尾，Esc 关闭；虚拟列表会把键盘选中的条目自动滚入视野。
 - **性能**：固定行高 + `uniform_list` 虚拟化，长历史只实体化视口内行；行内标题与描述单行省略。
 - **a11y**：面板为 `Role::Dialog`，行为 `Role::ListItem`（暴露 selected），删除与表头操作为 `Role::Button`。
 - **注意**：放在根视图最后一个子元素、滚动容器之外；条目集合变化后由调用方重绘。
@@ -2176,6 +2184,7 @@ TitleBar::new("My App")
 | Tree | `on_drop_node` | `&TreeDrop` | 3 |
 | TreeTable | `on_toggle` / `on_select` | `&SharedString` | 3 |
 | TreeTable | `on_check` | `&Vec<SharedString>` | 3 |
+| List | `on_select` | `&usize` | 3 |
 | Countdown | `on_finish` | —（无 Window） | 1 |
 | Calendar | `on_month_change` / `on_select` / `on_mode_change` | `&(i32,u32)` / `&Date` / `&CalendarMode` | 3 |
 | Tag | `on_close` | `&ClickEvent` | 3 |

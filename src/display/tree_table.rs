@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use gpui::{
     App, CursorStyle, Div, ElementId, FocusHandle, IntoElement, Pixels, RenderOnce, Role,
-    SharedString, Stateful, Toggled, UniformListScrollHandle, Window, div, prelude::*, px,
-    uniform_list,
+    ScrollStrategy, SharedString, Stateful, Toggled, UniformListScrollHandle, Window, div,
+    prelude::*, px, uniform_list,
 };
 
 use crate::{
@@ -101,7 +101,7 @@ pub fn tree_table_navigation_target(
     if len == 0 {
         return None;
     }
-    match key {
+    match key.strip_prefix("arrow").unwrap_or(key) {
         "up" => Some(current.map_or(len - 1, |index| index.saturating_sub(1))),
         "down" => Some(current.map_or(0, |index| (index + 1).min(len - 1))),
         "home" => Some(0),
@@ -733,8 +733,8 @@ impl RenderOnce for TreeTable {
             focus: focus.clone(),
         };
 
-        if let Some(height) = self.virtualized {
-            let handle = self.virtual_scroll.clone().unwrap_or_else(|| {
+        let virtual_scroll = self.virtualized.map(|_| {
+            self.virtual_scroll.clone().unwrap_or_else(|| {
                 window
                     .use_keyed_state(
                         ElementId::Name(format!("{owner}-vscroll").into()),
@@ -743,7 +743,12 @@ impl RenderOnce for TreeTable {
                     )
                     .read(cx)
                     .clone()
-            });
+            })
+        });
+        if let Some(height) = self.virtualized {
+            let handle = virtual_scroll
+                .clone()
+                .expect("virtualized tree table has a scroll handle");
             let bar = Scrollbar::vertical(
                 ElementId::Name(format!("{owner}-vbar").into()),
                 handle.0.borrow().base_handle.clone(),
@@ -783,8 +788,10 @@ impl RenderOnce for TreeTable {
         let on_check = self.on_check.clone();
         let checkable = self.checkable;
         let checked = self.checked;
+        let key_scroll = virtual_scroll.clone();
         root = root.on_key_down(move |event, window, cx| {
             let key = event.keystroke.key.as_str();
+            let key = key.strip_prefix("arrow").unwrap_or(key);
             let current = selected
                 .as_ref()
                 .and_then(|id| rows_for_key.iter().position(|row| &row.id == id));
@@ -792,6 +799,9 @@ impl RenderOnce for TreeTable {
                 cx.stop_propagation();
                 if let Some(on_select) = &on_select {
                     on_select(&rows_for_key[target].id, window, cx);
+                }
+                if let Some(scroll) = &key_scroll {
+                    scroll.scroll_to_item(target, ScrollStrategy::Nearest);
                 }
                 return;
             }
@@ -807,8 +817,14 @@ impl RenderOnce for TreeTable {
                             on_toggle(&row.id, window, cx);
                         }
                     } else if let Some(parent) = &row.parent {
-                        if let Some(on_select) = &on_select {
-                            on_select(parent, window, cx);
+                        if let Some(target) = rows_for_key.iter().position(|row| &row.id == parent)
+                        {
+                            if let Some(on_select) = &on_select {
+                                on_select(parent, window, cx);
+                            }
+                            if let Some(scroll) = &key_scroll {
+                                scroll.scroll_to_item(target, ScrollStrategy::Nearest);
+                            }
                         }
                     }
                 }
@@ -821,6 +837,9 @@ impl RenderOnce for TreeTable {
                     } else if current + 1 < rows_for_key.len() {
                         if let Some(on_select) = &on_select {
                             on_select(&rows_for_key[current + 1].id, window, cx);
+                        }
+                        if let Some(scroll) = &key_scroll {
+                            scroll.scroll_to_item(current + 1, ScrollStrategy::Nearest);
                         }
                     }
                 }
@@ -996,4 +1015,23 @@ fn check_box_static(
             .bg(crate::theme::bg_container());
     }
     box_el
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tree_table_navigation_target;
+
+    #[test]
+    fn tree_navigation_supports_arrow_prefixes_and_edges() {
+        assert_eq!(tree_table_navigation_target(None, "down", 3), Some(0));
+        assert_eq!(tree_table_navigation_target(None, "arrowup", 3), Some(2));
+        assert_eq!(tree_table_navigation_target(Some(1), "down", 3), Some(2));
+        assert_eq!(tree_table_navigation_target(Some(2), "down", 3), Some(2));
+        assert_eq!(tree_table_navigation_target(Some(1), "up", 3), Some(0));
+        assert_eq!(tree_table_navigation_target(Some(0), "up", 3), Some(0));
+        assert_eq!(tree_table_navigation_target(Some(1), "home", 3), Some(0));
+        assert_eq!(tree_table_navigation_target(Some(1), "end", 3), Some(2));
+        assert_eq!(tree_table_navigation_target(Some(1), "left", 3), None);
+        assert_eq!(tree_table_navigation_target(Some(1), "down", 0), None);
+    }
 }

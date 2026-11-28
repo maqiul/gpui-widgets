@@ -51,13 +51,13 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 |---|---|
 | `Anchor` | Anchor navigation: nested `AnchorItem` entries, left indicator track + current highlight, controlled `active()` + `on_click(&SharedString)`; scroll positioning is handled by the caller |
 | `Breadcrumb` | Breadcrumb navigation: the last item represents the current page and is not clickable; `on_click(&usize)` reports intermediate levels |
-| `DropdownMenu` | Action menu: any trigger element + a list of `MenuItem` entries (supports separators / `danger()` / `disabled()`); closes after an action is clicked |
-| `MenuBar` | Application menu bar: controlled expansion / selection, hover switching, reusable multilevel `MenuItem` submenus, and arrow-key / Home / End / Esc navigation |
+| `DropdownMenu` | Action menu: any trigger element + a list of `MenuItem` entries (supports separators / `danger()` / `disabled()`); trigger and menu items support arrow keys / Home / End / Esc, and actions close the menu |
+| `MenuBar` | Application menu bar: controlled expansion / selection, hover switching, reusable multilevel `MenuItem` submenus; top-level items, dropdowns, and submenus support arrow keys / Home / End / Esc |
 | `NavMenu` | Navigation menu: `MenuEntry` supports nested submenus, icons, and disabled states; selected and expanded sets are controlled; `on_select()` / `on_toggle()` |
 | `Pagination` | Pagination: page numbers start at 1; automatically collapses into ellipses when there are many pages; boundary buttons are disabled; `simple()` compact mode, `small()` small size |
 | `Steps` | Steps: completed ✓ / current number / gray pending state, controlled `current()`, `vertical()` vertical layout, `small()` small size, `progress_dot()` dotted style, `descriptions()` step descriptions |
 | `Tabs` | Tabs: underline indicator, `on_select(&usize)`; `disabled_tabs()` disables tabs, `closable()` + `on_close(&usize)` enables closing, `card()` card style, `centered()` centered layout |
-| `ContextMenu` | Context-menu wrapper: wraps any content; right-click opens a `MenuItem` menu at the cursor position (clamped within the viewport); requires a unique id |
+| `ContextMenu` | Context-menu wrapper: wraps any content; right-click opens a `MenuItem` menu at the cursor position (clamped within the viewport); menu items support arrow keys / Home / End / Esc; requires a unique id |
 | `FloatButton` | Floating button: an absolute-positioned circular button anchored to the container's bottom-right corner, with `bottom()` / `right()` / `tooltip()`; the parent container must be `relative()` |
 | `CommandPalette` | Command palette: a searchable command selector opened with Ctrl+K (overlay + centered panel); `PaletteItem` can include keyboard shortcut hints; is itself an `Entity` |
 
@@ -99,10 +99,10 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 
 | Widget | Description |
 |---|---|
-| `Table` | Data table: `column_widths()` column widths (equal by default), `striped()` zebra stripes, controlled row selection + `on_row_click()`; header sorting via `sortable()` + `sort()` + `on_sort()`, multi-selection via `selectable()` + `selected_rows()` + `on_selected_rows()`, automatic empty state for no data; built-in pagination via `pagination(page, page_size)` + `on_page_change()` (callbacks still use global indices, and Select All affects only the current page); expandable rows via `row_detail()` + `expanded_rows()` + `on_expand()`, `fixed_left()` / `fixed_right_columns(n)` pin columns on either side + horizontal scrolling (mutually exclusive with expandable rows), `resizable_columns(true)` enables pointer/keyboard column resizing, `filterable()` + `filter()` + `on_filter_change()` filtering, `editable_columns()` + `editing()` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()` controlled cell editing, `bordered()` full borders, `show_header(bool)` header visibility |
+| `Table` | Data table: `column_widths()` column widths (equal by default), `striped()` zebra stripes, controlled row selection + `on_row_click()`, and ↑ / ↓ / Home / End row navigation (virtual mode reveals the target row); header sorting via `sortable()` + `sort()` + `on_sort()`, multi-selection via `selectable()` + `selected_rows()` + `on_selected_rows()`, automatic empty state for no data; built-in pagination via `pagination(page, page_size)` + `on_page_change()` (callbacks still use global indices, and Select All affects only the current page); expandable rows via `row_detail()` + `expanded_rows()` + `on_expand()`, `fixed_left()` / `fixed_right_columns(n)` pin columns on either side + horizontal scrolling (mutually exclusive with expandable rows), `resizable_columns(true)` enables pointer/keyboard column resizing, `filterable()` + `filter()` + `on_filter_change()` filtering, `editable_columns()` + `editing()` + `on_edit_start()` / `on_cell_change()` / `on_edit_end()` controlled cell editing, `bordered()` full borders, `show_header(bool)` header visibility |
 | `Tree` | Tree widget: nested `TreeNode` entries (`Clone`), controlled expanded set / selected id, `on_toggle()` / `on_select()`; `checkable()` + `checked()` + `on_check()` parent-child checkbox synchronization, `draggable()` + `on_drop_node(&TreeDrop)` drag-to-move (the caller restructures the tree with `take_node()` / `find_node_mut()` / `push_child()`) |
-| `TreeTable` | Hierarchical table: multi-column `TreeTableNode` rows with controlled expanded / selected / checked sets and stable node-ID callbacks; parent-child checkbox synchronization and mixed state; arrow / Home / End / Left / Right / Enter / Space keyboard operation; fixed-row-height `virtualized(height)` scrolling |
-| `List` | List: `ListItem` title / description / avatar / `extra()` right-side element, `header()` / `footer()` |
+| `TreeTable` | Hierarchical table: multi-column `TreeTableNode` rows with controlled expanded / selected / checked sets and stable node-ID callbacks; parent-child checkbox synchronization and mixed state; arrow / Home / End / Left / Right / Enter / Space keyboard operation; fixed-row-height `virtualized(height)` scrolling with selected-row follow-focus |
+| `List` | List: `ListItem` title / description / avatar / `extra()` right-side element, `header()` / `footer()`; controlled `selected()` + `on_select()`, click and ↑ / ↓ / Home / End navigation, with automatic reveal in virtual mode |
 | `Card` | Card: title + `extra()` top-right action + `cover()` cover + `action()` bottom action area, `bordered()`, `hoverable()` raised shadow on hover |
 | `Descriptions` | Description list: `item(label, value)` key-value pairs, `column()` number of columns, `bordered()` table style, `vertical()` vertical layout (label above value) |
 | `Statistic` | Statistic: title + large number + `prefix()` / `suffix()` + `trend()` increase/decrease arrow |
@@ -147,7 +147,7 @@ Following the purpose-based grouping in the Ant Design component overview, each 
 | `ToastHost` | Self-managed toasts: default 3s / 4.5s / 6s expiry, hover pause, stable keys, `max_count` drops oldest, one ticker; `Duration::ZERO` is persistent |
 | `NotificationStack` | Notification stack: top-right overlay, `NotificationItem` title / description / type / `action()` button, stable keys + `on_dismiss`, controlled entries |
 | `NotificationHost` | Self-managed notifications: default 4.5s expiry, hover pause, stable keys, `max_count` drops oldest, one ticker; `Duration::ZERO` is persistent |
-| `NotificationCenter` | Notification center: right-side overlay panel with a virtual history list, unread count, selection / read / remove / mark-all-read, and arrow-key plus Home / End navigation |
+| `NotificationCenter` | Notification center: right-side overlay panel with a virtual history list, unread count, selection / read / remove / mark-all-read, and arrow-key plus Home / End navigation with automatic reveal |
 | `Popconfirm` | Popconfirm: wraps a trigger element, `description()` / `ok_text()` / `cancel_text()`, `on_confirm()` / `on_cancel()` |
 | `ProgressBar` | Progress bar (0.0 ~ 1.0), `steps(n)` segmented progress |
 | `RingProgress` | Circular progress: custom-drawn arc track + progress arc, `size()` / `thickness()` / `color()` / `label()` center text |
@@ -314,7 +314,8 @@ cargo run --example gen_assets   # Regenerate the demo video examples/assets/sam
   when omitted, it defaults to the month of the selected value (or the current month if there is no value); month navigation does not work without `on_month_change`.
   DateRangePicker follows the same convention (the month defaults to the start date's month); the pending start date is persisted by id across frames and automatically discarded when closed or cleared.
 - **Table pagination and fixed columns**: pagination is controlled (page numbers start at 1); callbacks for sorting / selection / expansion always use **global row indices**,
-  and header Select All affects only the current page; `fixed_left()` / `fixed_right_columns(n)` require a uniform row height (37px), columns without an explicit width default to 120px,
+  and header Select All affects only the current page; with the table or a row focused, ↑ / ↓ / Home / End navigate rows and virtual mode reveals the target row.
+  `fixed_left()` / `fixed_right_columns(n)` require a uniform row height (37px), columns without an explicit width default to 120px,
   and expandable rows do not work when combined with `row_detail()`. `filterable()` filters before pagination; `resizable_columns(true)` requires `on_column_resize()` to write widths back.
   `editable_columns()` + `editing()` are controlled: double-click or focus a cell and press Enter/Space to edit, then press Enter or blur to commit.
 - **Form validation is a controlled helper**: `validate(&value, &[Rule])` returns the error message for the first failing rule (`Option<SharedString>`),

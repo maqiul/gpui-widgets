@@ -1,10 +1,11 @@
 //! 列表：带头像 / 描述 / 额外元素的条目列表（对应 antd List）。
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use gpui::{
-    AnyElement, App, Div, ElementId, IntoElement, Pixels, Role, SharedString, Stateful,
-    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    AnyElement, App, CursorStyle, Div, ElementId, FocusHandle, IntoElement, Pixels, Role,
+    ScrollStrategy, SharedString, Stateful, UniformListScrollHandle, Window, div, prelude::*, px,
+    uniform_list,
 };
 
 use crate::a11y;
@@ -56,6 +57,19 @@ struct VirtualList {
     scroll: Option<UniformListScrollHandle>,
 }
 
+pub fn list_navigation_target(current: Option<usize>, key: &str, len: usize) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    match key.strip_prefix("arrow").unwrap_or(key) {
+        "down" => Some(current.map_or(0, |index| (index + 1).min(len - 1))),
+        "up" => Some(current.map_or(len - 1, |index| index.saturating_sub(1))),
+        "home" => Some(0),
+        "end" => Some(len - 1),
+        _ => None,
+    }
+}
+
 /// 通用列表。
 ///
 /// ```ignore
@@ -73,6 +87,8 @@ pub struct List {
     footer: Option<SharedString>,
     items: Vec<ListItem>,
     virtualized: Option<VirtualList>,
+    selected: Option<usize>,
+    on_select: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
 }
 
 impl List {
@@ -92,6 +108,8 @@ impl List {
             footer: None,
             items,
             virtualized: None,
+            selected: None,
+            on_select: None,
         }
     }
 
@@ -128,6 +146,8 @@ impl List {
                 row: Rc::new(row),
                 scroll: None,
             }),
+            selected: None,
+            on_select: None,
         }
     }
 
@@ -154,6 +174,16 @@ impl List {
         self.footer = Some(footer.into());
         self
     }
+
+    pub fn selected(mut self, selected: Option<usize>) -> Self {
+        self.selected = selected;
+        self
+    }
+
+    pub fn on_select(mut self, listener: impl Fn(&usize, &mut Window, &mut App) + 'static) -> Self {
+        self.on_select = Some(Rc::new(listener));
+        self
+    }
 }
 
 impl RenderOnce for List {
@@ -171,11 +201,44 @@ impl RenderOnce for List {
             .map(str::to_owned)
             .unwrap_or_else(|| self.origin.to_string());
         let item_prefix = list_id.clone();
+        let item_count = self
+            .virtualized
+            .as_ref()
+            .map_or(self.items.len(), |virtualized| virtualized.count);
+        let selected = self.selected;
+        let on_select = self.on_select.clone();
+        let navigation_enabled = on_select.is_some() && item_count > 0;
+        let navigation_focus = navigation_enabled.then(|| {
+            window
+                .use_keyed_state(
+                    ElementId::Name(format!("{list_id}-navigation-focus").into()),
+                    cx,
+                    |_, cx| cx.focus_handle(),
+                )
+                .read(cx)
+                .clone()
+        });
+        let virtual_scroll = self.virtualized.as_ref().map(|_| {
+            self.virtualized
+                .as_ref()
+                .and_then(|virtualized| virtualized.scroll.clone())
+                .unwrap_or_else(|| {
+                    window
+                        .use_keyed_state(
+                            ElementId::Name(format!("{list_id}-vscroll").into()),
+                            cx,
+                            |_, _| UniformListScrollHandle::new(),
+                        )
+                        .read(cx)
+                        .clone()
+                })
+        });
         let mut list = a11y::Semantics::new(
             Role::List,
             self.header.clone().unwrap_or_else(|| "列表".into()),
         )
         .id(list_id.clone())
+        .focusable(navigation_enabled)
         .apply(div().id(ElementId::Name(list_id.clone().into())))
         .flex()
         .flex_col()
@@ -185,6 +248,40 @@ impl RenderOnce for List {
         .border_color(theme::border())
         .rounded_lg()
         .overflow_hidden();
+        if let Some(focus) = &navigation_focus {
+            list = list.track_focus(focus);
+        }
+        let navigation_current = navigation_enabled
+            .then(|| Rc::new(Cell::new(selected.filter(|index| *index < item_count))));
+        if navigation_enabled {
+            let nav_on_select = on_select.clone();
+            let nav_scroll = virtual_scroll.clone();
+            let nav_focus = navigation_focus.clone();
+            let nav_current = navigation_current.clone().expect("navigation is enabled");
+            list = list.on_key_down(move |event, window, cx| {
+                if !nav_focus
+                    .as_ref()
+                    .is_some_and(|focus| focus.is_focused(window))
+                {
+                    return;
+                }
+                let Some(target) = list_navigation_target(
+                    nav_current.get(),
+                    event.keystroke.key.as_str(),
+                    item_count,
+                ) else {
+                    return;
+                };
+                cx.stop_propagation();
+                nav_current.set(Some(target));
+                if let Some(on_select) = &nav_on_select {
+                    on_select(&target, window, cx);
+                }
+                if let Some(scroll) = &nav_scroll {
+                    scroll.scroll_to_item(target, ScrollStrategy::Nearest);
+                }
+            });
+        }
 
         if let Some(header) = &self.header {
             list = list.child(
@@ -207,21 +304,15 @@ impl RenderOnce for List {
             let count = virt.count;
             let row_height = virt.row_height;
             let row = virt.row.clone();
-            let scroll = virt.scroll.clone().unwrap_or_else(|| {
-                window
-                    .use_keyed_state(
-                        ElementId::Name(format!("{list_id}-vscroll").into()),
-                        cx,
-                        |_, _| UniformListScrollHandle::new(),
-                    )
-                    .read(cx)
-                    .clone()
-            });
+            let row_navigation_scroll = virtual_scroll.clone();
+            let scroll = virtual_scroll.expect("virtualized list has a scroll handle");
             let bar = Scrollbar::vertical(
                 ElementId::Name(format!("{list_id}-vbar").into()),
                 scroll.0.borrow().base_handle.clone(),
             );
             let prefix = item_prefix.clone();
+            let row_on_select = on_select.clone();
+            let row_navigation_focus = navigation_focus.clone();
             let rows = uniform_list(
                 ElementId::Name(format!("{list_id}-vbody").into()),
                 count,
@@ -237,6 +328,11 @@ impl RenderOnce for List {
                                 m.avatar_size,
                                 padding,
                                 padding_sm,
+                                selected,
+                                row_on_select.clone(),
+                                row_navigation_focus.clone(),
+                                navigation_current.clone(),
+                                row_navigation_scroll.clone(),
                             )
                         })
                         .collect::<Vec<_>>()
@@ -265,6 +361,11 @@ impl RenderOnce for List {
                     m.avatar_size,
                     padding,
                     padding_sm,
+                    selected,
+                    on_select.clone(),
+                    navigation_focus.clone(),
+                    navigation_current.clone(),
+                    virtual_scroll.clone(),
                 ));
             }
         }
@@ -296,11 +397,18 @@ fn row_element(
     avatar_size: f32,
     padding: f32,
     padding_sm: f32,
+    selected: Option<usize>,
+    on_select: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
+    navigation_focus: Option<FocusHandle>,
+    navigation_current: Option<Rc<Cell<Option<usize>>>>,
+    navigation_scroll: Option<UniformListScrollHandle>,
 ) -> Stateful<Div> {
     let item_id = format!("{item_prefix}-item-{ix}");
     let mut semantics = a11y::Semantics::new(Role::ListItem, item.title.clone())
         .id(item_id.clone())
-        .position(ix + 1, count);
+        .position(ix + 1, count)
+        .selected(selected == Some(ix))
+        .focusable(on_select.is_some());
     if let Some(description) = &item.description {
         semantics = semantics.description(description.clone());
     }
@@ -312,6 +420,50 @@ fn row_element(
         .gap_3()
         .px(px(padding))
         .py(px(padding_sm));
+    if selected == Some(ix) {
+        row = row.bg(theme::primary_bg());
+    }
+    if let Some(on_select) = on_select {
+        row = row.cursor(CursorStyle::PointingHand).hover(move |style| {
+            if selected == Some(ix) {
+                style
+            } else {
+                style.bg(theme::with(|t| t.color_fill_tertiary))
+            }
+        });
+        let keyboard_on_select = on_select.clone();
+        let keyboard_scroll = navigation_scroll.clone();
+        let keyboard_current = navigation_current.clone();
+        let keyboard_focus = navigation_focus.clone();
+        row = row.on_key_down(move |event, window, cx| {
+            let Some(target) =
+                list_navigation_target(Some(ix), event.keystroke.key.as_str(), count)
+            else {
+                return;
+            };
+            cx.stop_propagation();
+            if let Some(current) = &keyboard_current {
+                current.set(Some(target));
+            }
+            keyboard_on_select(&target, window, cx);
+            if let Some(scroll) = &keyboard_scroll {
+                scroll.scroll_to_item(target, ScrollStrategy::Nearest);
+            }
+            if let Some(focus) = &keyboard_focus {
+                focus.focus(window, cx);
+            }
+        });
+        let click_current = navigation_current.clone();
+        row = a11y::click_void(row, move |window, cx| {
+            if let Some(current) = &click_current {
+                current.set(Some(ix));
+            }
+            if let Some(focus) = &navigation_focus {
+                focus.focus(window, cx);
+            }
+            on_select(&ix, window, cx);
+        });
+    }
     if ix < count - 1 {
         row = row.border_b_1().border_color(theme::border());
     }
@@ -355,4 +507,23 @@ fn row_element(
         row = row.child(extra);
     }
     row
+}
+
+#[cfg(test)]
+mod tests {
+    use super::list_navigation_target;
+
+    #[test]
+    fn list_navigation_moves_and_jumps_without_wrapping() {
+        assert_eq!(list_navigation_target(None, "down", 3), Some(0));
+        assert_eq!(list_navigation_target(None, "arrowup", 3), Some(2));
+        assert_eq!(list_navigation_target(Some(1), "down", 3), Some(2));
+        assert_eq!(list_navigation_target(Some(2), "down", 3), Some(2));
+        assert_eq!(list_navigation_target(Some(1), "up", 3), Some(0));
+        assert_eq!(list_navigation_target(Some(0), "up", 3), Some(0));
+        assert_eq!(list_navigation_target(Some(1), "home", 3), Some(0));
+        assert_eq!(list_navigation_target(Some(1), "end", 3), Some(2));
+        assert_eq!(list_navigation_target(Some(1), "right", 3), None);
+        assert_eq!(list_navigation_target(Some(1), "down", 0), None);
+    }
 }

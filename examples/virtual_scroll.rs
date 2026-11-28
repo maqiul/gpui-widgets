@@ -13,6 +13,9 @@ const ROWS: usize = 10_000;
 struct Panel {
     headers: Vec<&'static str>,
     table_rows: Vec<Vec<gpui::SharedString>>,
+    table_selected: Option<usize>,
+    table_selected_rows: Vec<usize>,
+    list_selected: Option<usize>,
 }
 
 impl Panel {
@@ -30,12 +33,15 @@ impl Panel {
                     ]
                 })
                 .collect(),
+            table_selected: Some(0),
+            table_selected_rows: vec![0],
+            list_selected: Some(0),
         }
     }
 }
 
 impl Render for Panel {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let table = Table::new(
             "virtual-table",
             self.headers.clone(),
@@ -43,6 +49,17 @@ impl Render for Panel {
         )
         .striped(true)
         .selectable(true)
+        .range_select(true)
+        .selected(self.table_selected)
+        .selected_rows(self.table_selected_rows.clone())
+        .on_selected_rows(cx.listener(|this, rows: &Vec<usize>, _, cx| {
+            this.table_selected_rows = rows.clone();
+            cx.notify();
+        }))
+        .on_row_click(cx.listener(|this, row: &usize, _, cx| {
+            this.table_selected = Some(*row);
+            cx.notify();
+        }))
         .column_widths(vec![px(48.), px(150.), px(170.), px(76.), px(82.)])
         .virtualized(px(520.))
         .bordered();
@@ -57,8 +74,16 @@ impl Render for Panel {
                 .avatar("●")
         })
         .id("virtual-list")
+        .selected(self.list_selected)
+        .on_select(cx.listener(|this, ix: &usize, _, cx| {
+            this.list_selected = Some(*ix);
+            cx.notify();
+        }))
         .header("会话列表")
-        .footer(format!("共 {ROWS} 条，仅渲染视口内的行"));
+        .footer(format!(
+            "共 {ROWS} 条，仅渲染视口内的行；当前选中 {:?}",
+            self.list_selected
+        ));
 
         div()
             .size_full()
@@ -72,7 +97,7 @@ impl Render for Panel {
                     .text_sm()
                     .text_color(theme::text_secondary())
                     .child(format!(
-                        "虚拟滚动 · 表格 {ROWS} 行 + 列表 {ROWS} 行（只挂载可见行）"
+                        "虚拟滚动 · 表格 {ROWS} 行 + 列表 {ROWS} 行；点击或用 ↑ / ↓ / Home / End 导航，Shift / Ctrl + 方向键调整表格多选"
                     )),
             )
             .child(

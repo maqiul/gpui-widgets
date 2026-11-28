@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, ElementId, IntoElement, RenderOnce, Role, SharedString, UniformListScrollHandle, Window,
-    deferred, div, prelude::*, px, uniform_list,
+    App, ElementId, IntoElement, RenderOnce, Role, ScrollStrategy, SharedString,
+    UniformListScrollHandle, Window, deferred, div, prelude::*, px, uniform_list,
 };
 
 use crate::a11y::{self, Semantics};
@@ -28,7 +28,7 @@ pub fn notification_center_target(current: Option<usize>, key: &str, len: usize)
     if len == 0 {
         return None;
     }
-    match key {
+    match key.strip_prefix("arrow").unwrap_or(key) {
         "up" => Some(match current {
             Some(current) => (current + len - 1) % len,
             None => len - 1,
@@ -407,8 +407,10 @@ impl RenderOnce for NotificationCenter {
 
         let on_select = self.on_select.clone();
         let on_dismiss = self.on_dismiss.clone();
+        let key_scroll = scroll.clone();
         let root = root.on_key_down(move |event, window, cx| {
             let key = event.keystroke.key.as_str();
+            let key = key.strip_prefix("arrow").unwrap_or(key);
             if key == "escape" {
                 cx.stop_propagation();
                 if let Some(listener) = &on_dismiss {
@@ -421,6 +423,7 @@ impl RenderOnce for NotificationCenter {
                 if let Some(listener) = &on_select {
                     listener(&target, window, cx);
                 }
+                key_scroll.scroll_to_item(target, ScrollStrategy::Nearest);
             }
         });
         deferred(
@@ -428,5 +431,22 @@ impl RenderOnce for NotificationCenter {
                 .id(root_id)
                 .apply(root),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::notification_center_target;
+
+    #[test]
+    fn notification_navigation_wraps_and_supports_arrow_prefixes() {
+        assert_eq!(notification_center_target(None, "down", 3), Some(0));
+        assert_eq!(notification_center_target(None, "arrowup", 3), Some(2));
+        assert_eq!(notification_center_target(Some(0), "up", 3), Some(2));
+        assert_eq!(notification_center_target(Some(2), "down", 3), Some(0));
+        assert_eq!(notification_center_target(Some(1), "home", 3), Some(0));
+        assert_eq!(notification_center_target(Some(1), "end", 3), Some(2));
+        assert_eq!(notification_center_target(Some(1), "left", 3), None);
+        assert_eq!(notification_center_target(Some(1), "down", 0), None);
     }
 }

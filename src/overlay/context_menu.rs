@@ -9,7 +9,10 @@ use gpui::{
 
 use crate::MenuItem;
 use crate::a11y::{self, Semantics};
-use crate::menu::{divider_state, point_in_any_bounds, render_menu_rows};
+use crate::menu::{
+    divider_state, focus_menu_handle, menu_edge_handle, menu_focus_map, point_in_any_bounds,
+    render_menu_rows,
+};
 use crate::theme::{self, metric};
 
 /// 上下文菜单状态（全局共享，同一时刻只展开一个）
@@ -60,6 +63,16 @@ impl RenderOnce for ContextMenu {
         let state = cx.default_global::<ContextMenuState>();
         let is_open = state.open_id.as_ref() == Some(&id);
         let position = state.position;
+        let menu_focus = menu_focus_map(window, cx, &ElementId::Name(id.clone()));
+        let context_focus = window
+            .use_keyed_state(
+                ElementId::Name(format!("{id}-context-focus").into()),
+                cx,
+                |_, cx| cx.focus_handle(),
+            )
+            .read(cx)
+            .clone();
+        let first_item = menu_edge_handle(&menu_focus, &self.items, "", true, cx);
         let submenu_state = window.use_keyed_state(
             ElementId::Name(format!("{id}-submenu-state").into()),
             cx,
@@ -85,6 +98,7 @@ impl RenderOnce for ContextMenu {
         let open_menu = {
             let id = id.clone();
             let set_open_submenu = set_open_submenu.clone();
+            let first_item = first_item.clone();
             Rc::new(
                 move |position: Point<Pixels>, window: &mut Window, cx: &mut App| {
                     let state = cx.default_global::<ContextMenuState>();
@@ -93,12 +107,16 @@ impl RenderOnce for ContextMenu {
                     set_open_submenu(None, window, cx);
                     cx.stop_propagation();
                     cx.refresh_windows();
+                    if let Some(handle) = &first_item {
+                        focus_menu_handle(handle.clone(), window, cx);
+                    }
                 },
             )
         };
 
         let mut root = div()
             .id(id.clone())
+            .track_focus(&context_focus)
             .relative()
             .children(self.children)
             .on_mouse_down(MouseButton::Right, {
@@ -145,6 +163,7 @@ impl RenderOnce for ContextMenu {
             let close = {
                 let id = id.clone();
                 let set_open_submenu = set_open_submenu.clone();
+                let context_focus = context_focus.clone();
                 Rc::new(move |window: &mut Window, cx: &mut App| {
                     set_open_submenu(None, window, cx);
                     let state = cx.default_global::<ContextMenuState>();
@@ -152,6 +171,7 @@ impl RenderOnce for ContextMenu {
                         state.open_id = None;
                     }
                     cx.refresh_windows();
+                    context_focus.focus(window, cx);
                 })
             };
             let menu = render_menu_rows(
@@ -163,6 +183,9 @@ impl RenderOnce for ContextMenu {
                 set_open_submenu.clone(),
                 "",
                 popup_bounds.clone(),
+                &menu_focus,
+                None,
+                cx,
             );
             let menu = menu.on_mouse_down_out({
                 let id = id.clone();

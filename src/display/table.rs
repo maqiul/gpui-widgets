@@ -1,12 +1,16 @@
 //! 数据表格：表头 + 文本行，支持斑马纹 / 行选中 / 排序 / 多选 / 分页 / 展开行 / 固定左列 / 全网格边框。
 
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use gpui::{
     AnyElement, App, CursorStyle, Div, ElementId, Entity, FocusHandle, Focusable, IntoElement,
-    MouseButton, Pixels, RenderOnce, Role, ScrollHandle, SharedString, Stateful,
-    StatefulInteractiveElement, Toggled, UniformListScrollHandle, Window, div, prelude::*, px,
-    uniform_list,
+    KeyDownEvent, MouseButton, Pixels, RenderOnce, Role, ScrollHandle, ScrollStrategy,
+    SharedString, Stateful, StatefulInteractiveElement, Toggled, UniformListScrollHandle, Window,
+    div, prelude::*, px, uniform_list,
 };
 
 use crate::{
@@ -106,11 +110,95 @@ pub fn table_fixed_column_ranges(
     (left, columns - left - right, right)
 }
 
+pub fn table_navigation_target(current: Option<usize>, key: &str, len: usize) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    match key.strip_prefix("arrow").unwrap_or(key) {
+        "down" => Some(current.map_or(0, |index| (index + 1).min(len - 1))),
+        "up" => Some(current.map_or(len - 1, |index| index.saturating_sub(1))),
+        "home" => Some(0),
+        "end" => Some(len - 1),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct ColumnDrag {
     column: usize,
     start_x: f32,
     start_width: f32,
+}
+
+struct TableNavigator {
+    visible: Vec<usize>,
+    selected: Option<usize>,
+    current: Cell<Option<usize>>,
+    selection: RefCell<Vec<usize>>,
+    on_row_click: Option<Rc<dyn Fn(&usize, &mut Window, &mut App)>>,
+    on_selected_rows: Option<Rc<dyn Fn(&Vec<usize>, &mut Window, &mut App)>>,
+    anchor: Option<Entity<Option<usize>>>,
+    scroll: Option<UniformListScrollHandle>,
+    focus: FocusHandle,
+}
+
+impl TableNavigator {
+    fn focus_row(&self, ix: usize, window: &mut Window, cx: &mut App) {
+        self.current.set(Some(ix));
+        self.focus.focus(window, cx);
+    }
+
+    fn set_selection(&self, selection: &[usize]) {
+        self.selection.borrow_mut().clone_from_slice(selection);
+    }
+
+    fn navigate(
+        &self,
+        focused_row: Option<usize>,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let current = focused_row
+            .or(self.current.get())
+            .or(self.selected)
+            .and_then(|ix| self.visible.iter().position(|index| *index == ix));
+        let Some(target) =
+            table_navigation_target(current, event.keystroke.key.as_str(), self.visible.len())
+        else {
+            return;
+        };
+        cx.stop_propagation();
+        let ix = self.visible[target];
+        let modifiers = event.keystroke.modifiers;
+        let previous_anchor = self
+            .anchor
+            .as_ref()
+            .map(|anchor| *anchor.read(cx))
+            .unwrap_or(None);
+        let next = range_selection(
+            &self.selection.borrow(),
+            ix,
+            previous_anchor,
+            modifiers.shift,
+            modifiers.control || modifiers.platform,
+        );
+        self.selection.borrow_mut().clone_from(&next);
+        self.current.set(Some(ix));
+        if let Some(anchor) = &self.anchor {
+            anchor.update(cx, |slot, _| *slot = Some(ix));
+        }
+        if let Some(on_selected_rows) = &self.on_selected_rows {
+            on_selected_rows(&next, window, cx);
+        }
+        if let Some(on_row_click) = &self.on_row_click {
+            on_row_click(&ix, window, cx);
+        }
+        if let Some(scroll) = &self.scroll {
+            scroll.scroll_to_item(target, ScrollStrategy::Nearest);
+        }
+        self.focus.focus(window, cx);
+    }
 }
 
 /// 数据表格（单元格为文本）。
@@ -591,11 +679,40 @@ impl RenderOnce for Table {
 
         let radius = theme::with(|t| TableMetric::resolve(t).radius);
         let column_count = cols + usize::from(this.selectable) + usize::from(expandable);
+        let navigation_enabled = !visible.is_empty()
+            && (this.on_row_click.is_some()
+                || (this.range_select && this.on_selected_rows.is_some()));
+        let navigation_focus = navigation_enabled.then(|| {
+            window
+                .use_keyed_state(
+                    ElementId::Name(format!("{table_id}-navigation-focus").into()),
+                    cx,
+                    |_, cx| cx.focus_handle(),
+                )
+                .read(cx)
+                .clone()
+        });
+        let virtual_scroll = this
+            .virtualized
+            .filter(|_| !expandable && !fixed_layout)
+            .map(|_| {
+                this.virtual_scroll.clone().unwrap_or_else(|| {
+                    window
+                        .use_keyed_state(
+                            ElementId::Name(format!("{table_id}-vscroll").into()),
+                            cx,
+                            |_, _| UniformListScrollHandle::new(),
+                        )
+                        .read(cx)
+                        .clone()
+                })
+            });
         let semantics = Semantics::new(Role::Table, "数据表格")
             .id(format!("{:?}-table-a11y", this.id))
             .value(SharedString::from(format!(
                 "共 {total} 行，{column_count} 列"
-            )));
+            )))
+            .focusable(navigation_enabled);
         let mut root = semantics.apply(
             div()
                 .id(ElementId::Name(format!("{:?}-table", this.id).into()))
@@ -607,6 +724,9 @@ impl RenderOnce for Table {
                 .overflow_hidden()
                 .text_sm(),
         );
+        if let Some(focus) = &navigation_focus {
+            root = root.track_focus(focus);
+        }
         if this.bordered {
             root = root.border_1().border_color(border_color());
         }
@@ -686,6 +806,37 @@ impl RenderOnce for Table {
                 |_, _| None::<usize>,
             )
         });
+        let navigation = navigation_enabled.then(|| {
+            Rc::new(TableNavigator {
+                visible: visible.clone(),
+                selected: this.selected,
+                current: Cell::new(this.selected),
+                selection: RefCell::new(this.selected_rows.clone()),
+                on_row_click: this.on_row_click.clone(),
+                on_selected_rows: this
+                    .range_select
+                    .then(|| this.on_selected_rows.clone())
+                    .flatten(),
+                anchor: anchor.clone(),
+                scroll: virtual_scroll.clone(),
+                focus: navigation_focus
+                    .clone()
+                    .expect("navigation has a focus handle"),
+            })
+        });
+        if let Some(navigation) = &navigation {
+            let navigation = navigation.clone();
+            let navigation_focus = navigation_focus.clone();
+            root = root.on_key_down(move |event, window, cx| {
+                if !navigation_focus
+                    .as_ref()
+                    .is_some_and(|focus| focus.is_focused(window))
+                {
+                    return;
+                }
+                navigation.navigate(None, event, window, cx);
+            });
+        }
         if let Some(height) = this.virtualized.filter(|_| !expandable && !fixed_layout) {
             let pagination = this.pagination_bar(total);
             root = root.child(this.virtual_body(
@@ -695,8 +846,8 @@ impl RenderOnce for Table {
                 some_checked,
                 anchor.as_ref(),
                 height,
-                window,
-                cx,
+                virtual_scroll.expect("virtualized table has a scroll handle"),
+                navigation,
             ));
             if let Some(pagination) = pagination {
                 root = root.child(pagination);
@@ -713,6 +864,7 @@ impl RenderOnce for Table {
                 anchor.as_ref(),
                 window,
                 cx,
+                navigation.as_ref(),
             ));
         } else {
             root = this.normal_body(
@@ -723,6 +875,7 @@ impl RenderOnce for Table {
                 some_checked,
                 expandable,
                 anchor.as_ref(),
+                navigation.as_ref(),
             );
         }
 
@@ -1173,6 +1326,7 @@ impl Table {
         ix: usize,
         side: &str,
         anchor: Option<&Entity<Option<usize>>>,
+        navigation: Option<&Rc<TableNavigator>>,
     ) -> Stateful<Div> {
         let checked = self.selected_rows.contains(&ix);
         let label = self
@@ -1189,9 +1343,17 @@ impl Table {
                     || (self.range_select && self.on_selected_rows.is_some()),
             );
         let mut row = row;
+        let navigation = navigation.cloned();
+        if let Some(navigation) = &navigation {
+            let navigation = navigation.clone();
+            row = row.on_key_down(move |event, window, cx| {
+                navigation.navigate(Some(ix), event, window, cx);
+            });
+        }
         if let (Some(anchor), Some(on_selected_rows)) = (anchor, self.on_selected_rows.clone()) {
             let anchor = anchor.clone();
             let current = self.selected_rows.clone();
+            let navigation = navigation.clone();
             row = row.cursor(CursorStyle::PointingHand).hover(move |style| {
                 // 已选中行保持选中底色，避免 hover 灰底遮住高亮
                 if checked {
@@ -1201,6 +1363,9 @@ impl Table {
                 }
             });
             row = a11y::click(row, move |event, window, cx| {
+                if let Some(navigation) = &navigation {
+                    navigation.focus_row(ix, window, cx);
+                }
                 let modifiers = event.modifiers();
                 let prev = *anchor.read(cx);
                 let next = range_selection(
@@ -1210,15 +1375,21 @@ impl Table {
                     modifiers.shift,
                     modifiers.control || modifiers.platform,
                 );
+                if let Some(navigation) = &navigation {
+                    navigation.set_selection(&next);
+                }
                 anchor.update(cx, |slot, _| *slot = Some(ix));
                 on_selected_rows(&next, window, cx);
             });
-        }
-        if let Some(on_row_click) = self.on_row_click.clone() {
+        } else if let Some(on_row_click) = self.on_row_click.clone() {
+            let navigation = navigation.clone();
             row = row
                 .cursor(CursorStyle::PointingHand)
                 .hover(|style| style.bg(row_hover_bg()));
             row = a11y::click_void(row, move |window, cx| {
+                if let Some(navigation) = &navigation {
+                    navigation.focus_row(ix, window, cx);
+                }
                 on_row_click(&ix, window, cx);
             });
         }
@@ -1277,6 +1448,7 @@ impl Table {
         column_count: usize,
         column_offset: usize,
         anchor: Option<&Entity<Option<usize>>>,
+        navigation: Option<&Rc<TableNavigator>>,
     ) -> Stateful<Div> {
         let row = &self.rows[ix];
         let mut row_div = div()
@@ -1303,7 +1475,7 @@ impl Table {
                 column_count,
             ));
         }
-        self.with_row_click(row_div, ix, "row", anchor)
+        self.with_row_click(row_div, ix, "row", anchor, navigation)
     }
 
     /// 普通模式：单栏行堆叠 + 展开详情行
@@ -1316,6 +1488,7 @@ impl Table {
         some_checked: bool,
         expandable: bool,
         anchor: Option<&Entity<Option<usize>>>,
+        navigation: Option<&Rc<TableNavigator>>,
     ) -> Stateful<Div> {
         let column_count = cols + usize::from(self.selectable) + usize::from(expandable);
         let column_offset = usize::from(self.selectable) + usize::from(expandable);
@@ -1340,6 +1513,7 @@ impl Table {
                 column_count,
                 column_offset,
                 anchor,
+                navigation,
             ));
 
             // 展开详情行
@@ -1379,8 +1553,8 @@ impl Table {
         some_checked: bool,
         anchor: Option<&Entity<Option<usize>>>,
         height: Pixels,
-        window: &mut Window,
-        cx: &mut App,
+        handle: UniformListScrollHandle,
+        navigation: Option<Rc<TableNavigator>>,
     ) -> Div {
         let column_count = cols + usize::from(self.selectable);
         let column_offset = usize::from(self.selectable);
@@ -1398,16 +1572,6 @@ impl Table {
         }
 
         let table_id = format!("{:?}", self.id);
-        let handle = self.virtual_scroll.clone().unwrap_or_else(|| {
-            window
-                .use_keyed_state(
-                    ElementId::Name(format!("{table_id}-vscroll").into()),
-                    cx,
-                    |_, _| UniformListScrollHandle::new(),
-                )
-                .read(cx)
-                .clone()
-        });
         let bar = Scrollbar::vertical(
             ElementId::Name(format!("{table_id}-vbar").into()),
             handle.0.borrow().base_handle.clone(),
@@ -1430,6 +1594,7 @@ impl Table {
                             column_count,
                             column_offset,
                             anchor.as_ref(),
+                            navigation.as_ref(),
                         )
                     })
                     .collect::<Vec<_>>()
@@ -1459,6 +1624,7 @@ impl Table {
         anchor: Option<&Entity<Option<usize>>>,
         window: &mut Window,
         cx: &mut App,
+        navigation: Option<&Rc<TableNavigator>>,
     ) -> Div {
         let column_count = cols + usize::from(self.selectable);
         let column_offset = usize::from(self.selectable);
@@ -1603,7 +1769,7 @@ impl Table {
                         column_count,
                     ));
                 }
-                left = left.child(self.with_row_click(left_row, ix, "rowL", anchor));
+                left = left.child(self.with_row_click(left_row, ix, "rowL", anchor, navigation));
             }
             if middle_count > 0 {
                 let mut middle_row = div()
@@ -1624,7 +1790,8 @@ impl Table {
                         column_count,
                     ));
                 }
-                middle = middle.child(self.with_row_click(middle_row, ix, "rowM", anchor));
+                middle =
+                    middle.child(self.with_row_click(middle_row, ix, "rowM", anchor, navigation));
             }
             if right_count > 0 {
                 let mut right_row = div()
@@ -1645,7 +1812,7 @@ impl Table {
                         column_count,
                     ));
                 }
-                right = right.child(self.with_row_click(right_row, ix, "rowR", anchor));
+                right = right.child(self.with_row_click(right_row, ix, "rowR", anchor, navigation));
             }
         }
 
@@ -1761,7 +1928,7 @@ mod tests {
 
     use super::{
         next_sort, range_selection, table_filtered_indices, table_fixed_column_ranges,
-        table_resize_column,
+        table_navigation_target, table_resize_column,
     };
 
     #[test]
@@ -1815,5 +1982,19 @@ mod tests {
         assert_eq!(table_fixed_column_ranges(5, false, 2), (0, 3, 2));
         assert_eq!(table_fixed_column_ranges(2, true, 9), (1, 0, 1));
         assert_eq!(table_fixed_column_ranges(0, true, 9), (0, 0, 0));
+    }
+
+    #[test]
+    fn row_navigation_clamps_at_edges_and_supports_arrow_prefixes() {
+        assert_eq!(table_navigation_target(None, "down", 3), Some(0));
+        assert_eq!(table_navigation_target(None, "arrowup", 3), Some(2));
+        assert_eq!(table_navigation_target(Some(1), "down", 3), Some(2));
+        assert_eq!(table_navigation_target(Some(2), "down", 3), Some(2));
+        assert_eq!(table_navigation_target(Some(1), "up", 3), Some(0));
+        assert_eq!(table_navigation_target(Some(0), "up", 3), Some(0));
+        assert_eq!(table_navigation_target(Some(1), "home", 3), Some(0));
+        assert_eq!(table_navigation_target(Some(1), "end", 3), Some(2));
+        assert_eq!(table_navigation_target(Some(1), "left", 3), None);
+        assert_eq!(table_navigation_target(Some(1), "down", 0), None);
     }
 }

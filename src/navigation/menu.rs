@@ -4,12 +4,14 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     rc::Rc,
 };
 
 use gpui::{
-    AnyElement, App, Bounds, CursorStyle, Div, ElementId, Hsla, IntoElement, Pixels, Point,
-    RenderOnce, Role, SharedString, Stateful, Window, div, prelude::*, px, transparent_black,
+    AnyElement, App, Bounds, CursorStyle, Div, ElementId, FocusHandle, Hsla, IntoElement, Pixels,
+    Point, RenderOnce, Role, SharedString, Stateful, Window, div, prelude::*, px,
+    transparent_black,
 };
 
 use crate::a11y;
@@ -225,6 +227,75 @@ impl MenuItem {
 
 type SetOpenSubmenu = Rc<dyn Fn(Option<SharedString>, &mut Window, &mut App)>;
 
+/// 菜单项焦点表：所有层级共享，路径是相对顶层菜单的稳定链。
+pub(crate) type MenuFocusMap = Rc<RefCell<HashMap<SharedString, FocusHandle>>>;
+
+pub(crate) fn menu_focus_map(window: &mut Window, cx: &mut App, id: &ElementId) -> MenuFocusMap {
+    window
+        .use_keyed_state(
+            ElementId::Name(format!("{id:?}-focus-map").into()),
+            cx,
+            |_, _| MenuFocusMap::default(),
+        )
+        .read(cx)
+        .clone()
+}
+
+pub(crate) fn menu_focus_handle(map: &MenuFocusMap, path: &str, cx: &mut App) -> FocusHandle {
+    if let Some(handle) = map.borrow().get(path).cloned() {
+        return handle;
+    }
+    let handle = cx.focus_handle();
+    map.borrow_mut()
+        .insert(SharedString::from(path), handle.clone());
+    handle
+}
+
+pub(crate) fn focus_menu_handle(handle: FocusHandle, window: &mut Window, cx: &mut App) {
+    window.defer(cx, move |window, cx| handle.focus(window, cx));
+}
+
+pub(crate) fn menu_navigation_target(
+    current: Option<usize>,
+    key: &str,
+    len: usize,
+) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    match key.strip_prefix("arrow").unwrap_or(key) {
+        "down" => Some(current.map_or(0, |index| (index + 1).min(len - 1))),
+        "up" => Some(current.map_or(len - 1, |index| index.saturating_sub(1))),
+        "home" => Some(0),
+        "end" => Some(len - 1),
+        _ => None,
+    }
+}
+
+pub(crate) fn menu_edge_path(
+    items: &[MenuItem],
+    prefix: &str,
+    forward: bool,
+) -> Option<SharedString> {
+    let mut indices = (0..items.len()).filter(|ix| !items[*ix].separator && !items[*ix].disabled);
+    let index = if forward {
+        indices.next()
+    } else {
+        indices.next_back()
+    }?;
+    Some(SharedString::from(submenu_path(prefix, index)))
+}
+
+pub(crate) fn menu_edge_handle(
+    map: &MenuFocusMap,
+    items: &[MenuItem],
+    prefix: &str,
+    forward: bool,
+    cx: &mut App,
+) -> Option<FocusHandle> {
+    menu_edge_path(items, prefix, forward).map(|path| menu_focus_handle(map, &path, cx))
+}
+
 fn menu_submenu_row(
     id: ElementId,
     item: &MenuItem,
@@ -317,9 +388,28 @@ pub(crate) fn render_menu_rows(
     set_open_submenu: SetOpenSubmenu,
     path_prefix: &str,
     popup_bounds: PopupBoundsSink,
+    focus_map: &MenuFocusMap,
+    parent_handle: Option<FocusHandle>,
+    cx: &mut App,
 ) -> Stateful<Div> {
     let mut menu = menu_container(ElementId::Name(format!("{id:?}-menu").into())).w(width);
+    let nav_items: Vec<(MenuItem, SharedString)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| !item.separator && !item.disabled)
+        .map(|(ix, item)| {
+            (
+                item.clone(),
+                SharedString::from(submenu_path(path_prefix, ix)),
+            )
+        })
+        .collect();
+    let focus_targets: Vec<FocusHandle> = nav_items
+        .iter()
+        .map(|(_, path)| menu_focus_handle(focus_map, path, cx))
+        .collect();
     let item_count = items.iter().filter(|item| !item.separator).count();
+    let parent_open_path = submenu_parent_path(path_prefix);
     let mut item_position = 0;
     for (ix, item) in items.iter().enumerate() {
         if item.separator {
@@ -330,9 +420,13 @@ pub(crate) fn render_menu_rows(
         }
         item_position += 1;
         let item_path = submenu_path(path_prefix, ix);
+        let focus_index = nav_items
+            .iter()
+            .position(|(_, path)| path.as_ref() == item_path.as_str());
+        let row_handle = focus_index.map(|index| focus_targets[index].clone());
         if let Some(subitems) = &item.submenu {
             let open = submenu_is_open(open_submenu, &item_path);
-            let row = menu_submenu_row(
+            let mut row = menu_submenu_row(
                 ElementId::Name(format!("{id:?}-item-{ix}").into()),
                 item,
                 open,
@@ -340,6 +434,9 @@ pub(crate) fn render_menu_rows(
                 item_path.clone().into(),
                 Some((item_position, item_count)),
             );
+            if let Some(handle) = &row_handle {
+                row = row.track_focus(handle);
+            }
             let popup = if open {
                 let nested = render_menu_rows(
                     ElementId::Name(format!("{id:?}-submenu-{item_path}").into()),
@@ -350,6 +447,9 @@ pub(crate) fn render_menu_rows(
                     set_open_submenu.clone(),
                     &format!("{item_path}."),
                     popup_bounds.clone(),
+                    focus_map,
+                    row_handle.clone(),
+                    cx,
                 );
                 let gap = px(theme::with(|t| t.padding_xxs));
                 Some(div().ml(gap).child(nested))
@@ -363,12 +463,15 @@ pub(crate) fn render_menu_rows(
                 Some(popup_bounds.clone()),
             ));
         } else {
-            let row = menu_item_row_at(
+            let mut row = menu_item_row_at(
                 ElementId::Name(format!("{id:?}-item-{ix}").into()),
                 item,
                 close.clone(),
                 Some((item_position, item_count)),
             );
+            if let Some(handle) = &row_handle {
+                row = row.track_focus(handle);
+            }
             let hover_path = submenu_parent_path(path_prefix);
             let clear_submenu = set_open_submenu.clone();
             let row = row.on_mouse_move(move |_, window, cx| {
@@ -377,6 +480,64 @@ pub(crate) fn render_menu_rows(
             menu = menu.child(row);
         }
     }
+
+    let key_targets = focus_targets.clone();
+    let key_items = nav_items.clone();
+    let key_map = focus_map.clone();
+    let key_close = close.clone();
+    let key_set_open = set_open_submenu.clone();
+    let key_parent = parent_handle;
+    let key_parent_open = parent_open_path;
+    menu = menu.on_key_down(move |event, window, cx| {
+        let key = event.keystroke.key.as_str();
+        let key = key.strip_prefix("arrow").unwrap_or(key);
+        let current = key_targets
+            .iter()
+            .position(|handle| handle.is_focused(window));
+        if key == "escape" {
+            cx.stop_propagation();
+            key_close(window, cx);
+            return;
+        }
+        if key == "left" {
+            cx.stop_propagation();
+            if let Some(parent) = &key_parent {
+                key_set_open(key_parent_open.clone(), window, cx);
+                parent.focus(window, cx);
+            } else {
+                key_close(window, cx);
+            }
+            return;
+        }
+        if matches!(key, "enter" | "space" | "right") {
+            let Some(current) = current else {
+                return;
+            };
+            let Some((item, item_path)) = key_items.get(current) else {
+                return;
+            };
+            if let Some(subitems) = &item.submenu {
+                cx.stop_propagation();
+                key_set_open(Some(item_path.clone()), window, cx);
+                if let Some(handle) =
+                    menu_edge_handle(&key_map, subitems, &format!("{item_path}."), true, cx)
+                {
+                    focus_menu_handle(handle, window, cx);
+                }
+            } else if key != "right" {
+                cx.stop_propagation();
+                if let Some(listener) = &item.on_click {
+                    listener(window, cx);
+                }
+                key_close(window, cx);
+            }
+            return;
+        }
+        if let Some(target) = menu_navigation_target(current, key, key_targets.len()) {
+            cx.stop_propagation();
+            key_targets[target].focus(window, cx);
+        }
+    });
     menu
 }
 
@@ -444,6 +605,17 @@ impl DropdownMenu {
 impl RenderOnce for DropdownMenu {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let open = self.open;
+        let menu_focus = menu_focus_map(window, cx, &self.id);
+        let trigger_focus = window
+            .use_keyed_state(
+                ElementId::Name(format!("{:?}-trigger-focus", self.id).into()),
+                cx,
+                |_, cx| cx.focus_handle(),
+            )
+            .read(cx)
+            .clone();
+        let first_item = menu_edge_handle(&menu_focus, &self.items, "", true, cx);
+        let last_item = menu_edge_handle(&menu_focus, &self.items, "", false, cx);
         let suppress_toggle = Rc::new(Cell::new(false));
         let submenu_state = window.use_keyed_state(
             ElementId::Name(format!("{:?}-submenu-state", self.id).into()),
@@ -474,11 +646,17 @@ impl RenderOnce for DropdownMenu {
                 .id(trigger_id.clone())
                 .expanded(open)
                 .focusable(self.on_open_change.is_some())
-                .apply(div().id(ElementId::Name(trigger_id.into())))
+                .apply(
+                    div()
+                        .id(ElementId::Name(trigger_id.into()))
+                        .track_focus(&trigger_focus),
+                )
                 .child(self.trigger);
         if let Some(on_open_change) = self.on_open_change.clone() {
             let suppress_toggle = suppress_toggle.clone();
-            let set_open_submenu = set_open_submenu.clone();
+            let click_submenu = set_open_submenu.clone();
+            let click_open = on_open_change.clone();
+            let click_first = first_item.clone();
             trigger = trigger.cursor(CursorStyle::PointingHand);
             trigger = a11y::click_void(trigger, move |window, cx| {
                 if suppress_toggle.take() {
@@ -486,9 +664,36 @@ impl RenderOnce for DropdownMenu {
                 }
                 let next = !open;
                 if !next {
-                    set_open_submenu(None, window, cx);
+                    click_submenu(None, window, cx);
                 }
-                on_open_change(&next, window, cx);
+                click_open(&next, window, cx);
+                if next && let Some(handle) = &click_first {
+                    focus_menu_handle(handle.clone(), window, cx);
+                }
+            });
+            let keyboard_open = on_open_change.clone();
+            let keyboard_submenu = set_open_submenu.clone();
+            let keyboard_first = first_item.clone();
+            let keyboard_last = last_item.clone();
+            trigger = trigger.on_key_down(move |event, window, cx| {
+                let key = event.keystroke.key.as_str();
+                let key = key.strip_prefix("arrow").unwrap_or(key);
+                if key == "escape" && open {
+                    cx.stop_propagation();
+                    keyboard_submenu(None, window, cx);
+                    on_open_change(&false, window, cx);
+                    return;
+                }
+                let handle = match key {
+                    "down" => keyboard_first.clone(),
+                    "up" => keyboard_last.clone(),
+                    _ => return,
+                };
+                cx.stop_propagation();
+                keyboard_open(&true, window, cx);
+                if let Some(handle) = handle {
+                    focus_menu_handle(handle, window, cx);
+                }
             });
         }
 
@@ -497,11 +702,13 @@ impl RenderOnce for DropdownMenu {
             let close = {
                 let on_open_change = self.on_open_change.clone();
                 let set_open_submenu = set_open_submenu.clone();
+                let trigger_focus = trigger_focus.clone();
                 Rc::new(move |window: &mut Window, cx: &mut App| {
                     set_open_submenu(None, window, cx);
                     if let Some(on_open_change) = &on_open_change {
                         on_open_change(&false, window, cx);
                     }
+                    trigger_focus.focus(window, cx);
                 })
             };
             let menu = render_menu_rows(
@@ -513,6 +720,9 @@ impl RenderOnce for DropdownMenu {
                 set_open_submenu.clone(),
                 "",
                 popup_bounds.clone(),
+                &menu_focus,
+                None,
+                cx,
             );
             let menu = menu.on_mouse_down_out({
                 let on_open_change = self.on_open_change.clone();
@@ -602,5 +812,35 @@ mod tests {
                 "{open:?} {item}"
             );
         }
+    }
+
+    #[test]
+    fn menu_navigation_moves_without_wrapping_and_supports_prefixes() {
+        assert_eq!(menu_navigation_target(None, "down", 3), Some(0));
+        assert_eq!(menu_navigation_target(None, "arrowup", 3), Some(2));
+        assert_eq!(menu_navigation_target(Some(1), "down", 3), Some(2));
+        assert_eq!(menu_navigation_target(Some(2), "down", 3), Some(2));
+        assert_eq!(menu_navigation_target(Some(1), "up", 3), Some(0));
+        assert_eq!(menu_navigation_target(Some(0), "up", 3), Some(0));
+        assert_eq!(menu_navigation_target(Some(1), "home", 3), Some(0));
+        assert_eq!(menu_navigation_target(Some(1), "end", 3), Some(2));
+        assert_eq!(menu_navigation_target(Some(1), "left", 3), None);
+        assert_eq!(menu_navigation_target(Some(1), "down", 0), None);
+    }
+
+    #[test]
+    fn menu_edges_skip_separators_and_disabled_items() {
+        let items = vec![
+            MenuItem::separator(),
+            MenuItem::new("disabled").disabled(true),
+            MenuItem::new("first"),
+            MenuItem::separator(),
+            MenuItem::new("last"),
+            MenuItem::new("disabled-last").disabled(true),
+        ];
+        assert_eq!(menu_edge_path(&items, "2.", true).as_deref(), Some("2.2"));
+        assert_eq!(menu_edge_path(&items, "2.", false).as_deref(), Some("2.4"));
+        assert_eq!(menu_edge_path(&[], "2.", true), None);
+        assert_eq!(menu_edge_path(&[MenuItem::separator()], "2.", false), None);
     }
 }

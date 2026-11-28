@@ -476,6 +476,7 @@ An arbitrary trigger element + a dropdown action list. **Controlled component**,
 - **MenuItem properties**: separators, `danger()` for destructive actions, `disabled()` for disabled items, and `submenu(label, items)` for recursive multilevel menus.
 - **MenuItem callback**: `on_click(&mut Window, &mut App)` (**2 arguments**); submenu parent items do not register their own action callback.
 - **Behavior**: hovering or clicking a submenu parent opens it to the right, recursive levels are supported, and it flips left near the right window edge. Actions dismiss the menu; see [1.4](#14-popup-positioning-mechanism-shared-convention) for popup positioning.
+- **Keyboard / accessibility**: when the trigger is focused, ↓ / ↑ opens the menu and focuses the first / last item; within the menu, ↑ / ↓ move, Home / End jump, → / Enter / Space opens a submenu, ← returns to the parent item, and Esc closes the menu. Disabled items and separators are skipped.
 
 ```rust
 let entity = cx.entity();
@@ -500,7 +501,7 @@ A desktop-style top-level menu that reuses `MenuItem` submenus, danger items, an
 - **MenuBar properties**: `open(Option<usize>)` controls the expanded top-level item, `selected(Option<usize>)` controls the selected item, and `menu_width(px)` sets the dropdown width.
 - **Callbacks**: `on_open_change(&Option<usize>, &mut Window, &mut App)`; `on_select(usize, &SharedString, &mut Window, &mut App)` receives the top-level index and action label.
 - **Behavior**: clicking a top-level item opens it; while a menu is open, hovering another top-level item switches directly; clicking outside or activating an action dismisses it; submenus open to the right and flip left near the right window edge.
-- **Keyboard / accessibility**: uses `Role::MenuBar` plus top-level `Role::Button` nodes with expanded / selected state; Left / Right wrap, Home / End jump, keyboard switching follows an open menu, and Esc dismisses it.
+- **Keyboard / accessibility**: uses `Role::MenuBar` plus top-level `Role::Button` nodes with expanded / selected state; Left / Right wrap and Home / End jump at the top level, while ↓ / ↑ opens a menu and focuses its first / last item; inside dropdowns and submenus, ↑ / ↓ move, Home / End jump, → / Enter / Space opens a submenu, ← returns to the parent item, and Esc dismisses the menu.
 - **Caveat**: write `open` and `selected` back in callbacks; submenu parents have no action callback, and actions fire from leaf items.
 
 ```rust
@@ -586,6 +587,7 @@ Wraps arbitrary content and opens a menu on right-click. **Wrapper**, **requires
 - **Creation**: `ContextMenu::new(id: impl Into<ElementId>, items)`, then `.child(arbitrary content)`.
 - **Behavior**: opens the `MenuItem` menu at the cursor on right-click, clamped within the viewport; `MenuItem::submenu(...)` is also supported.
 - **MenuItem callback**: `on_click` (2 arguments).
+- **Keyboard**: ↑ / ↓ move, Home / End jump, → / Enter / Space opens a submenu, ← returns to the parent item, and Esc closes the menu. Disabled items and separators are skipped.
 
 ```rust
 ContextMenu::new("ctx", vec![MenuItem::new("Copy"), MenuItem::new("Paste")])
@@ -1052,7 +1054,7 @@ The most feature-rich display control. **Controlled component**, **requires a un
 - **Properties**:
   - `column_widths(vec)`: column widths (equal distribution by default).
   - `striped()`: zebra striping; `bordered()`: full borders; `show_header(bool)`: header visibility.
-  - Controlled row selection + `on_row_click()`.
+  - Controlled row selection + `on_row_click()`; with the table or a row focused, ↑ / ↓ / Home / End navigate rows and virtual mode reveals the target row.
   - `sortable()` + `sort(col, asc)` + `on_sort()`: header sorting.
   - `selectable()` + `selected_rows(vec)` + `on_selected_rows()`: multi-selection.
   - `pagination(page, page_size)` + `on_page_change()`: built-in pagination.
@@ -1137,7 +1139,7 @@ Table columns combined with hierarchical nodes. **Controlled component**, **requ
   - `column_widths(Vec<Pixels>)`, `striped()`, `bordered()`, and `show_header(bool)`.
   - `virtualized(height)`: fixed row height plus `uniform_list` virtualization; `virtual_scroll_handle(handle)` reuses an external scroll handle.
 - **Callbacks** (all 3 arguments): `on_toggle(&SharedString)`, `on_select(&SharedString)`, and `on_check(&Vec<SharedString>)`.
-- **Keyboard**: after focusing the table, ↑ / ↓ move, Home / End jump to the first / last row; ← collapses the current node or moves to its parent; → expands the current node or moves to its first child; Enter selects; Space toggles checking when checkboxes are enabled.
+- **Keyboard**: after focusing the table, ↑ / ↓ move, Home / End jump to the first / last row; ← collapses the current node or moves to its parent; → expands the current node or moves to its first child; Enter selects; Space toggles checking when checkboxes are enabled. In virtual mode, selection changes automatically reveal the target row.
 - **Pure helpers**: `tree_table_visible_ids()`, `tree_table_toggle_expanded()`, `tree_table_navigation_target()`, `tree_table_check_state()`, and `tree_table_cascade_check()` can be used directly for host state management or matrix tests.
 - **Accessibility**: `Role::Table` for the container; `Role::ColumnHeader` for headers; table row/cell semantics; expand buttons expose `Role::Button` plus expanded state; checkboxes expose `Role::CheckBox` plus mixed state.
 - **Performance**: visible rows are flattened depth-first; virtual mode instantiates only visible rows. Row height is fixed, so cell text is single-line ellipsized.
@@ -1166,20 +1168,32 @@ TreeTable::new("files-table", ["Name", "Size", "Status"], self.nodes.clone())
 
 ### List · List
 
-A vertical list. **Controlled component** (no callbacks).
+A vertical list. Selection and callbacks are controlled; without `on_select()` it remains display-only.
 
 - **Creation**: `ListItem::new(title)` (can set a description / avatar / `extra()` right-side element); `List::new(items)`.
-- **Virtual scrolling**: `List::virtualized(px(viewport_height), px(row_height), count, |ix| ListItem)` + `virtual_scroll_handle(handle)` mounts only visible rows; each row is built on demand by the factory, and header / footer stay fixed outside the viewport.
+- **Selection**: `selected(Option<usize>)` + `on_select(&usize, &mut Window, &mut App)`; click a row or focus the list and press ↑ / ↓ / Home / End to change the selection.
+- **Virtual scrolling**: `List::virtualized(px(viewport_height), px(row_height), count, |ix| ListItem)` + `virtual_scroll_handle(handle)` mounts only visible rows; each row is built on demand by the factory, header / footer stay fixed outside the viewport, and keyboard selection automatically reveals the target row.
 - **Properties**: `header(el)` / `footer(el)`.
 
 ```rust
 List::new(vec![
     ListItem::new("Item one").description("Description text"),
     ListItem::new("Item two").extra(Button::new("Action")),
-]).header(Text::new("List title").strong())
+])
+.selected(self.selected)
+.on_select(cx.listener(|this, ix, _, cx| {
+    this.selected = Some(*ix);
+    cx.notify();
+}))
+.header(Text::new("List title").strong())
 
 List::virtualized(px(520.), px(56.), 10_000, |ix|
     ListItem::new(format!("Session {ix:05}")).description("host-000.internal"))
+    .selected(self.selected)
+    .on_select(cx.listener(|this, ix, _, cx| {
+        this.selected = Some(*ix);
+        cx.notify();
+    }))
     .header(Text::new("Sessions").strong())
 ```
 
@@ -1654,7 +1668,7 @@ A right-side notification-history overlay. **Controlled component**; the parent 
 - **Properties**: `open(bool)`, `selected(Option<usize>)`, `title(text)`, `empty_text(text)`; an empty collection shows the empty state.
 - **Entry capabilities**: reuses `NotificationItem`, adding `.read(bool)`, `.set_read(bool)`, and `.timestamp(text)`; read them with `is_read()`, `timestamp_text()`, `description_text()`, `title()`, and `variant()`.
 - **Callbacks**: `on_select(&usize, &mut Window, &mut App)`, `on_read(&usize, &mut Window, &mut App)`, `on_remove(&usize, &mut Window, &mut App)`, `on_mark_all_read(&mut Window, &mut App)`, and `on_dismiss(&mut Window, &mut App)`. The last two have no event argument, so they cannot use `cx.listener` directly; capture a `cx.entity()` handle and update the parent inside the closure.
-- **Interaction**: clicking an entry selects it and, when unread, triggers `on_read`; ✕ removes it; the header can mark all as read or close the panel; ↑ / ↓ wrap, Home / End jump to the first / last entry, and Esc closes it.
+- **Interaction**: clicking an entry selects it and, when unread, triggers `on_read`; ✕ removes it; the header can mark all as read or close the panel; ↑ / ↓ wrap, Home / End jump to the first / last entry, and Esc closes it. The virtual list automatically reveals the keyboard-selected entry.
 - **Performance**: fixed row height plus `uniform_list` virtualization; long histories instantiate only visible rows, and titles / descriptions are single-line ellipsized.
 - **Accessibility**: the panel uses `Role::Dialog`, rows use `Role::ListItem` with selected state, and remove / header actions use `Role::Button`.
 - **Caveat**: render as the last child of the root view, outside the scroll container; the caller redraws after changing the collection.
@@ -2175,6 +2189,7 @@ TitleBar::new("My App")
 | Tree | `on_drop_node` | `&TreeDrop` | 3 |
 | TreeTable | `on_toggle` / `on_select` | `&SharedString` | 3 |
 | TreeTable | `on_check` | `&Vec<SharedString>` | 3 |
+| List | `on_select` | `&usize` | 3 |
 | Countdown | `on_finish` | — (no Window) | 1 |
 | Calendar | `on_month_change` / `on_select` / `on_mode_change` | `&(i32,u32)` / `&Date` / `&CalendarMode` | 3 |
 | Tag | `on_close` | `&ClickEvent` | 3 |

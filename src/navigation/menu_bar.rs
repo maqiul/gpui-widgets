@@ -8,7 +8,10 @@ use gpui::{
 };
 
 use crate::a11y;
-use crate::menu::{MenuItem, point_in_any_bounds, render_menu_rows};
+use crate::menu::{
+    MenuFocusMap, MenuItem, focus_menu_handle, menu_edge_path, menu_focus_handle, menu_focus_map,
+    point_in_any_bounds, render_menu_rows,
+};
 use crate::popup::{PopupBoundsSink, PopupPlacement, anchored_with_placement_and_bounds};
 use crate::theme::{self, Tokens};
 
@@ -252,6 +255,7 @@ impl RenderOnce for MenuBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let owner = format!("{:?}", self.id);
         let menu_was_open = self.open.is_some();
+        let menu_focus: MenuFocusMap = menu_focus_map(window, cx, &self.id);
         let metrics = theme::with(|t| theme::metric::MenuBarMetric::resolve(t));
         let focus_state = window.use_keyed_state(
             ElementId::Name(format!("{owner}-focus-handles").into()),
@@ -292,10 +296,15 @@ impl RenderOnce for MenuBar {
         let close = {
             let on_open_change = self.on_open_change.clone();
             let set_open_submenu = set_open_submenu.clone();
+            let close_handles = handles.clone();
+            let close_open = self.open;
             Rc::new(move |window: &mut Window, cx: &mut App| {
                 set_open_submenu(None, window, cx);
                 if let Some(on_open_change) = &on_open_change {
                     on_open_change(&None, window, cx);
+                }
+                if let Some(handle) = close_open.and_then(|index| close_handles.get(index)) {
+                    handle.focus(window, cx);
                 }
             })
         };
@@ -328,6 +337,9 @@ impl RenderOnce for MenuBar {
             let hover_style = theme::with(|t| menu_bar_item_state(t, selected, open, true, false));
             let focus_handle = handles[index].clone();
             let item_id = format!("{owner}-item-{}", item.id);
+            let menu_prefix = format!("{index}.");
+            let menu_first = menu_edge_path(&item.children, &menu_prefix, true);
+            let menu_last = menu_edge_path(&item.children, &menu_prefix, false);
             let mut semantics = a11y::Semantics::new(Role::Button, item.label.clone())
                 .id(item_id.clone())
                 .selected(selected)
@@ -395,9 +407,15 @@ impl RenderOnce for MenuBar {
                 if !item.children.is_empty() {
                     let on_open_change = self.on_open_change.clone();
                     let next_open = if open { None } else { Some(index) };
+                    let menu_focus = menu_focus.clone();
+                    let menu_first = menu_first.clone();
                     button = a11y::click_void(button, move |window, cx| {
                         if let Some(on_open_change) = &on_open_change {
                             on_open_change(&next_open, window, cx);
+                        }
+                        if let Some(path) = next_open.and(menu_first.as_ref()) {
+                            let handle = menu_focus_handle(&menu_focus, path, cx);
+                            focus_menu_handle(handle, window, cx);
                         }
                     });
                     let on_open_change = self.on_open_change.clone();
@@ -423,17 +441,36 @@ impl RenderOnce for MenuBar {
                 }
                 let target_handles = handles.clone();
                 let on_open_change = self.on_open_change.clone();
+                let menu_focus = menu_focus.clone();
+                let menu_first = menu_first.clone();
+                let menu_last = menu_last.clone();
                 button = button.on_key_down(move |event, window, cx| {
-                    if event.keystroke.key == "escape" {
+                    let key = event.keystroke.key.as_str();
+                    let key = key.strip_prefix("arrow").unwrap_or(key);
+                    if key == "escape" {
                         cx.stop_propagation();
                         if let Some(on_open_change) = &on_open_change {
                             on_open_change(&None, window, cx);
                         }
                         return;
                     }
-                    if let Some(target) =
-                        menu_bar_target(index, event.keystroke.key.as_str(), item_count)
-                    {
+                    if matches!(key, "down" | "up") && menu_first.is_some() {
+                        cx.stop_propagation();
+                        if let Some(on_open_change) = &on_open_change {
+                            on_open_change(&Some(index), window, cx);
+                        }
+                        let path = if key == "down" {
+                            &menu_first
+                        } else {
+                            &menu_last
+                        };
+                        if let Some(path) = path {
+                            let handle = menu_focus_handle(&menu_focus, path, cx);
+                            focus_menu_handle(handle, window, cx);
+                        }
+                        return;
+                    }
+                    if let Some(target) = menu_bar_target(index, key, item_count) {
                         cx.stop_propagation();
                         target_handles[target].focus(window, cx);
                         if self.open.is_some() {
@@ -457,8 +494,11 @@ impl RenderOnce for MenuBar {
                     close.clone(),
                     open_submenu.as_ref(),
                     set_open_submenu.clone(),
-                    "",
+                    &menu_prefix,
                     popup_bounds.clone(),
+                    &menu_focus,
+                    None,
+                    cx,
                 );
                 Some(div().child(menu))
             } else {
